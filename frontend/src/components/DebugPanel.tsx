@@ -28,6 +28,7 @@ export function DebugPanel({ onClose }: { onClose: () => void }) {
           <div><dt>Backend</dt><dd>{health ? "Connected" : error ? "Unavailable" : "Checking…"}</dd></div>
           <div><dt>Provider</dt><dd>{health?.mode === "gemini" ? "Gemini" : "Local mock"}</dd></div>
           <div><dt>Model</dt><dd>{health?.model ?? "—"}</dd></div>
+          <div><dt>API key auth</dt><dd>{health ? health.auth_configured ? "Configured" : "Missing" : "—"}</dd></div>
           <div><dt>Version</dt><dd>{health?.version ?? "—"}</dd></div>
         </dl>
         {error && <p className="error-message" role="alert">{error}</p>}

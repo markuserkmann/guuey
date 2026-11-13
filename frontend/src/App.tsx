@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { DebugPanel } from "./components/DebugPanel";
 import { Message } from "./components/Message";
 import { sendMessage, type ChatMessage } from "./chatApi";
+import { ConnectPanel } from "./components/ConnectPanel";
 
 export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [token, setToken] = useState("");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -31,7 +33,7 @@ export function App() {
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content };
     setMessages((current) => [...current, userMessage]);
     try {
-      const reply = await sendMessage(content, messages);
+      const reply = await sendMessage(token, content, messages);
       setMessages((current) => [...current, reply]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The message could not be sent.");
@@ -41,12 +43,14 @@ export function App() {
   }
 
   return (
+    token ? (
     <main className="chat-shell">
       <header className="chat-header">
         <a className="wordmark" href="/" aria-label="Guuey home">Guuey</a>
-        <button className="quiet-button" type="button" onClick={() => setDebugOpen(true)}>
-          Debug
-        </button>
+        <div className="header-actions">
+          <button className="quiet-button" type="button" onClick={() => setDebugOpen(true)}>Debug</button>
+          <button className="quiet-button" type="button" onClick={() => { setToken(""); setMessages([]); }}>Disconnect</button>
+        </div>
       </header>
 
       <section className="conversation" aria-label="Conversation" aria-live="polite">
@@ -83,9 +87,10 @@ export function App() {
           ↑
         </button>
       </form>
-      <p className="composer-hint">Local test mode · Enter to send, Shift+Enter for a new line</p>
+      <p className="composer-hint">Enter to send · Shift+Enter for a new line</p>
 
-      {debugOpen && <DebugPanel onClose={() => setDebugOpen(false)} />}
+        {debugOpen && <DebugPanel onClose={() => setDebugOpen(false)} />}
     </main>
+    ) : <ConnectPanel onConnect={setToken} />
   );
 }

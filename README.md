@@ -1,6 +1,12 @@
 # Guuey
 
-A React chat interface with a small FastAPI/Pydantic backend. The current backend is a deterministic local mock for exercising chat and the Debug menu. It does not call a model provider.
+A standalone React chat UI backed by FastAPI, Pydantic, and Pydantic AI. Chat uses Gemini when configured and a deterministic local reply when no Gemini key is set.
+
+## Configuration
+
+Copy `.env.example` to `.env`, set a unique `AGENT_API_TOKEN` with at least 32 characters, and optionally set `GEMINI_API_KEY`. The Gemini key stays on the server. `GOOGLE_API_KEY` is also accepted. `GEMINI_MODEL` selects the model and defaults to `gemini-3.5-flash-lite`.
+
+The browser asks for the backend token at connect time. It is held in tab memory only and is cleared on reload or disconnect.
 
 ## Run with Docker
 
@@ -8,11 +14,9 @@ A React chat interface with a small FastAPI/Pydantic backend. The current backen
 docker compose up --build
 ```
 
-Open http://localhost:18000. The Debug menu reports backend health and mock mode. The backend API is available at http://localhost:18001/docs.
+Open http://localhost:18000. The backend API and docs are at http://localhost:18001. The Debug panel reports provider, model, backend health, and whether API key auth is configured.
 
-If those ports are busy, override `BACKEND_PORT` and `FRONTEND_PORT` when starting Compose.
-
-Set `GEMINI_API_KEY` in the environment or in a local `.env` file to enable Gemini. `GOOGLE_API_KEY` is also accepted. The default model is `gemini-3.5-flash-lite`; set `GEMINI_MODEL` to choose another Gemini model. Without a key the API stays in local mock mode.
+Set `BACKEND_PORT` and `FRONTEND_PORT` to override the host ports.
 
 ## Local development
 
@@ -32,4 +36,4 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:5173. The Vite server proxies `/api` to port 8000.
+Open http://localhost:5173. Vite proxies `/api` to the backend on port 8000.
