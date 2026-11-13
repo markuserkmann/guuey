@@ -7,4 +7,6 @@ def test_health() -> None:
     with TestClient(app) as client:
         response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {
+        "status": "ok", "mode": "mock", "version": "0.1.0", "model": "local mock"
+    }

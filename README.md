@@ -1,32 +1,22 @@
 # Guuey
 
-Python backend using FastAPI and Pydantic, with a React and TypeScript frontend built by Vite.
+A React chat interface with a small FastAPI/Pydantic backend. The current backend is a deterministic local mock for exercising chat and the Debug menu. It does not call a model provider.
 
-## Docker
-
-With Docker Engine and Docker Compose installed:
+## Run with Docker
 
 ```sh
 docker compose up --build
 ```
 
-Open http://localhost:8080. API docs are at http://localhost:8000/docs, and the health endpoint is http://localhost:8000/api/health. The frontend proxies `/api` to the backend.
+Open http://localhost:18000. The Debug menu reports backend health and mock mode. The backend API is available at http://localhost:18001/docs.
 
-Stop containers with `docker compose down`.
+If those ports are busy, override `BACKEND_PORT` and `FRONTEND_PORT` when starting Compose.
 
-If the default ports are occupied, override them:
-
-```sh
-BACKEND_PORT=18000 FRONTEND_PORT=18080 docker compose up --build
-```
-
-With these overrides, open http://localhost:18080 and API docs at http://localhost:18000/docs.
+Set `GEMINI_API_KEY` in the environment or in a local `.env` file to enable Gemini. `GOOGLE_API_KEY` is also accepted. The default model is `gemini-3.5-flash-lite`; set `GEMINI_MODEL` to choose another Gemini model. Without a key the API stays in local mock mode.
 
 ## Local development
 
-Requires Python 3.12+, uv, and Node.js 22 with npm.
-
-Backend:
+Start the API:
 
 ```sh
 cd backend
@@ -34,7 +24,7 @@ uv sync --frozen
 uv run uvicorn app.main:app --reload
 ```
 
-Frontend, in another terminal:
+Start the UI in another terminal:
 
 ```sh
 cd frontend
@@ -42,20 +32,4 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:5173. Vite proxies `/api` to the local backend on port 8000.
-
-## Checks
-
-```sh
-cd backend
-uv run pytest
-```
-
-```sh
-cd frontend
-npm run build
-```
-
-Dependency resolutions are recorded in `backend/uv.lock` and `frontend/package-lock.json`. Use `uv lock` or `npm install` when intentionally updating dependencies.
-
-Always obtain user permission before creating a Git commit.
+Open http://localhost:5173. The Vite server proxies `/api` to port 8000.
