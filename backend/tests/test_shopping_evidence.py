@@ -32,7 +32,7 @@ def test_omitted_finland_and_stock_checks_cannot_complete():
     assert answer_coverage(output, sources())["verified"] == 0
     assert [c.status for c in output.findings[0].checks] == ["met", "unknown", "unknown"]
     text, _ = render_answer(output, sources())
-    assert "Finland: **Unverified**" in text
+    assert "To confirm" in text and "deliver to Finland" in text and "Not found" not in text
     assert "Definitely available" not in text
 
 
@@ -49,12 +49,13 @@ def test_review_prices_and_search_snippets_cannot_verify_offers():
 def test_live_product_with_explicit_destination_is_verified():
     output = apply_contract(offer(), sources(), CONTRACT)
     assert answer_coverage(output, sources())["verified"] == 1
-    assert "multiple retailers" in output.limitations[0]
+    assert not any("multiple retailers" in item for item in output.limitations)
 
 
 def test_shipping_policy_must_belong_to_the_seller():
     answer = offer()
-    other = {"url": "https://other.fi/shipping", "title": "Shipping", "text": "Delivery to Finland.", "retrieval": "page"}
+    other = {"url": "https://other.fi/shipping", "title": "Shipping", "text": "Delivery to Finland.", "retrieval": "page",
+             "observed_at": datetime.now(UTC).isoformat()}
     answer.findings[0].checks[-1].evidence[0].source_url = other["url"]
     output = apply_contract(answer, sources() + [other], CONTRACT)
     assert output.findings[0].checks[-1].status == "unknown"

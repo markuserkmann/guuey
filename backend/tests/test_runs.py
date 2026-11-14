@@ -168,7 +168,7 @@ def test_research_keeps_useful_first_round_when_followup_degrades(tmp_path, monk
     runs.claim()
     worker.execute(run['id'])
     saved = runs.get('owner', run['id'])
-    assert len(calls) == 2
+    assert len(calls) == worker.RESEARCH_LIMITS['auto'][0]
     assert saved['result']['reply'] == 'Useful shortlist'
     assert saved['result']['sources'][0]['url'] == 'https://example.com/1'
     assert saved['status'] == 'partial'

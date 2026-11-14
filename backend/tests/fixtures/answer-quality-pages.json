@@ -1,0 +1,125 @@
+{
+  "paeva_villa": {
+    "source_id": "S_1a91ccae89e505c4",
+    "title": "Majutus - Päeva Villa",
+    "url": "https://paevavilla.ee/majutus/",
+    "retrieval": "page",
+    "observed_at": "2026-11-14T15:14:26.512391+00:00",
+    "retrieved_at": "2026-11-14T15:14:26.512391+00:00",
+    "request_started_at": "2026-11-14T15:14:25.801599+00:00",
+    "text": "Hubane perehotell Haapsalu lahe kaldal aastast 1994",
+    "provenance": {
+      "capture_path": "backend/evaluations/pipeline/opt-evidence-tiers/estonia_hotels.json",
+      "capture_sha256": "e9a2c4e9fd3ec29ff0b4d68993b2d7cc5f25b39a4cfb7d07934cb478813f09d1",
+      "full_source_text_sha256": "22c10abb6a0659ceac059b75f3546ece8f7791fffc453458d7231681c97c4734",
+      "excerpt_start": 5549,
+      "excerpt_end": 5600
+    }
+  },
+  "narva_budget": {
+    "source_id": "S_53cf8bf51e45e57b",
+    "title": "Estonia Travel Costs 2026: Daily Budgets, Prices and Money Tips",
+    "url": "https://www.tripmag.uk/article/estonia-travel-costs-2026/",
+    "retrieval": "page",
+    "observed_at": "2026-11-14T15:30:31.414090+00:00",
+    "retrieved_at": "2026-11-14T15:30:31.414090+00:00",
+    "request_started_at": "2026-11-14T15:30:30.089663+00:00",
+    "published_at": "2026-11-08T00:00:00.000Z",
+    "text": "Spa hotels in Pärnu, Haapsalu, Kuressaare, Narva Jõesuu, Värska and Tallinn sell day passes for pools and saunas, and treatment packages that are generally cheaper than similar packages in Finland or Western Europe. Overnight spa packages including meals and treatments are popular and can be good value outside the summer.",
+    "provenance": {
+      "capture_path": "backend/evaluations/pipeline/opt-final-fixed/estonia_hotels.json",
+      "capture_sha256": "4be7a40f61475673d1e32058d8ba66688f215f3a8d6c87e698fa2ae855ebf8fa",
+      "full_source_text_sha256": "5ace7a96bf2e9d89bd8e3c090d724677f62d569ef7aec95803059bd73a1e805d",
+      "excerpt_start": 7767,
+      "excerpt_end": 8090
+    }
+  },
+  "transhostel": {
+    "source_id": "S_6b42a2cfa7e2c44a",
+    "title": "Cheap and budget hotels in Estonia",
+    "url": "https://www.estonia-hotels.net/en/theme/cheap-and-budget-hotels-9/28/",
+    "retrieval": "page",
+    "observed_at": "2026-11-14T15:30:31.028517+00:00",
+    "retrieved_at": "2026-11-14T15:30:31.028517+00:00",
+    "request_started_at": "2026-11-14T15:30:30.089721+00:00",
+    "text": "#### Transhostel Romantika\n\n Rahu 4A, Narva, Estonia \n\n To enjoy your vacation in Narva, stay at Transhostel Romantika Narva apartment, which is 2.8 km from the medieval castle \"Ivangorod Fortress\" and approximately 25 minutes' walk from Narva Hermann… \n\n Excellent (27 reviews)\n\nstarts from 31 USD price for 1 night\n\n ![](https://www.estonia-hotels.net/data/Photos/700x500w/14564/1456473/1456473298.JPEG) \n\n#### Paernu Apartment Aisa 39\n\n 39 Aisa III Korrus, Parnu, Est",
+    "provenance": {
+      "capture_path": "backend/evaluations/pipeline/opt-final-fixed/estonia_hotels.json",
+      "capture_sha256": "4be7a40f61475673d1e32058d8ba66688f215f3a8d6c87e698fa2ae855ebf8fa",
+      "full_source_text_sha256": "691c3a7af3dcf4fe6dbaafaa5617c26f7800aa968d40be4cf73a501b9dfec8e3",
+      "excerpt_start": 5483,
+      "excerpt_end": 5953
+    }
+  },
+  "gigantti_outlet": {
+    "source_id": "S_cac021d80f91aadd",
+    "title": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava",
+    "url": "https://www.gigantti.fi/product/outlet/hp-laptop-15-fc0851no-r7-7730u16512-156-kannettava/969385",
+    "retrieval": "live",
+    "observed_at": "2026-11-14T15:30:56.994858+00:00",
+    "retrieved_at": "2026-11-14T15:30:56.994858+00:00",
+    "request_started_at": "2026-11-14T15:30:51.672073+00:00",
+    "crawl_source": "crawled",
+    "text": "# HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava\n\n15,6\" HP Laptop 15-fc0851no R7-7730U/16/512 -kannettava tarjoaa AMD Ryzen 7 -prosessorin, 16 GB RAM-muistia, 512 GB SSD-levyn ja FullHD SVA -näytön, joka tarjoaa 85 % näytön ja rungon välisen suhteen tuottavuutta ja tyyliä varten.\n\n- Price: 559,00 €\n- SKU: 969385\n- Brand: HP\n- Canonical URL: https://www.gigantti.fi/product/outlet/hp-laptop-15-fc0851no-r7-7730u16512-156-kannettava/969385\n\n## Reviews\n\n- [Product reviews](https://www.gigantti.fi/reviews/969385)\n- [Service reviews](https://www.gigantti.fi/service-reviews)\n\n## Breadcrumbs\n\n- [Outlet](https://www.gigantti.fi/outlet)\n\n## Media assets\n\n- Primary image: [https://next-media.elkjop.com/image/dv_web_D180001352689/969385/hp-laptop-15-fc0851no-r7-7730u16512-156-kannettava.jpg](https://next-media.elkjop.com/image/dv_web_D180001352689/969385/hp-laptop-15-fc0851no-r7-7730u16512-156-kannettava.jpg)\n- Brand logo: [https://next-media.elkjop.com/image/DV_PNG_NOCLIP_D180001325181/Brand/hp.png](https://next-media.elkjop.com/image/DV_PNG_NOCLIP_D180001325181/Brand/hp.png)\n\n## Kohokohdat\n\n- AMD Ryzen™ 7 7730U -prosessori\n- 15,6\" FHD SVA -näyttö\n- 16 GB DDR4 RAM, 512 GB SSD\n\n## Ominaisuudet\n\n15,6\" HP Laptop 15-fc0851no R7-7730U/16/512 -kannettava on suunniteltu täyttämään tietotekniset tarpeesi tehokkaasti ja tyylikkäästi. 15,6-tuumainen nä",
+    "provenance": {
+      "capture_path": "backend/evaluations/pipeline/opt-final-fixed/finland_laptops.json",
+      "capture_sha256": "bd493645b7880dabcd3cb0fbca107d33a657eb88d280ebf7bbed1d1112859362",
+      "full_source_text_sha256": "5b0d394d076219bd1dbfb5c2d55f2db3ae8bfcae34a87b34e3370073b094f462",
+      "excerpt_start": 0,
+      "excerpt_end": 1360
+    }
+  },
+  "gigantti_price": {
+    "source_id": "S_770f569a95b05b57",
+    "title": "Asus Vivobook i7-12/16/512 15,6\" kannettava",
+    "url": "https://www.gigantti.fi/product/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet/asus-vivobook-i7-1216512-156-kannettava/648019",
+    "retrieval": "live",
+    "observed_at": "2026-11-14T15:30:56.994858+00:00",
+    "retrieved_at": "2026-11-14T15:30:56.994858+00:00",
+    "request_started_at": "2026-11-14T15:30:51.672073+00:00",
+    "crawl_source": "crawled",
+    "text": "# Asus Vivobook i7-12/16/512 15,6\" kannettava\n\nKatso elokuvia, muokkaa asiakirjoja ja nauti työskentelystä 15,6\" Asus Vivobook i7-12/16/512 -kannettavalla, joka tarjoaa runsaasti suorituskykyä. Siinä on tehokas Intel-prosessori, 16 GB RAM-muistia ja 512 GB nopea SSD-tallennustila.\n\n- Price: 697,00 €\n- SKU: 648019\n- Brand: Asus\n- Rating: 4.7/5 from 71 reviews\n- Canonical URL: https://www.gigantti.fi/product/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet/asus-vivobook-i7-1216512-156-kannettava/648019\n\n## Reviews\n\n- [Product reviews](https://www.gigantti.fi/reviews/648019)\n- [Service reviews](https://www.gigantti.fi/service-reviews)\n\n## Breadcrumbs\n\n- [Tietokoneet ja toimistotarvikkeet](https://www.gigantti.fi/tietokoneet-ja-toimistotarvikkeet)\n- [Tietokoneet](https://www.gigantti.fi/tietokoneet-ja-toimistotarvikkeet/tietokoneet)\n- [Kannettavat tietokoneet](https://www.gigantti.fi/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet)\n\n## Media assets\n\n- Primary image: [https://next-media.elkjop.com/image/dv_web_D1800012698596/648019/asus-vivobook-i7-1216512-156-kannettava.jpg](https://next-media.elkjop.com/image/dv_web_D1800012698596/648019/asus-vivobook-i7-1216512-156-kannettava.jpg)\n- Image 2: [https://next-media.elkjop.com/image/dv_web_D1800012695996/648019/asus-vivobook-i7-1216512-156-kannettava.jpg](https://next-media.elkjop.com/image/dv_web_D1800012695996/648019/asus-vivobook-i7-12165",
+    "provenance": {
+      "capture_path": "backend/evaluations/pipeline/opt-final-fixed/finland_laptops.json",
+      "capture_sha256": "bd493645b7880dabcd3cb0fbca107d33a657eb88d280ebf7bbed1d1112859362",
+      "full_source_text_sha256": "538bbd18e3a8349a961a914f5ccbf70d9afee24818e21686933db4a2ad3402a1",
+      "excerpt_start": 0,
+      "excerpt_end": 1450
+    }
+  },
+  "booking_budget": {
+    "source_id": "S_453c15fa819992f7",
+    "title": "The 10 best cheap hotels in Pärnu, Estonia | Booking.com",
+    "url": "https://www.booking.com/budget/city/ee/parnu.html",
+    "retrieval": "page",
+    "observed_at": "2026-11-14T15:30:30.992240+00:00",
+    "retrieved_at": "2026-11-14T15:30:30.992240+00:00",
+    "request_started_at": "2026-11-14T15:30:30.089766+00:00",
+    "text": "The 10 best cheap hotels in Pärnu, Estonia | Booking.com\n\n# Cheap hotels in Pärnu\n\nFind the cheap hotels that appeal to you the most\n\n### November 2026\n\n## The best cheap hotels in Pärnu\n\nCheck out our selection of great cheap hotels in Pärnu\n\nOur top picks Lowest Price First Star rating and price Top reviewed\n\n![Aleksandri Guesthouse, hotel in Pärnu](https://cf.bstatic.com/xdata/images/hotel/square600/377776707.webp?k=9e2ad8707448b15fea973af433d4529dc04bdcdcbe9ed3fba5ad365d402c991e&o=)\n\nAleksandri Guesthouse\n\nPärnu\n\nLocated in Pärnu on the right hand side of the Pärnu River, Aleksandri Guest house offers summer houses and air-conditioned rooms with free Wi-Fi. \n\nS\n\nSzabolcs\n\nFrom\n\nFinland\n\nUnique and beautiful place, cheerful staff. Very safe free parking place. Breakfast is very pleasant. Pet friendly. I like the political \"correctnesslessness\", sorry ladies, bikers are tough guys, as you like them.\n\nScored out of 10, guest rating 9.0\n\nWonderful - What previous guests thought, 1,229 reviews\n\nPrice from $87.44 1 night, 2 adults\n\nHotel Vesiroos\n\nHotel in Pärnu\n\nHotel Vesiroos is located in a quiet area of Parnu, a 10-minute walk from the sandy Baltic beach. It features an outdoor pool, a sauna and bright rooms with a pool view. \n\nM\n\nMiia\n\nFinland\n\nVery nice staff.Good breakfast. Modern hotel.Very comfortable beds. Good location.\n\nScored out of 10, guest rating 9.0\n\nWonderful - What previous guests thought, 1,734 reviews\n\nPrice from $59.53 1 night, 2 adults\n\nHotel Legend\n\nHotel in Beach Area, Pärnu\n\nHotel Legend is located close to the beach and the picturesque beach park of Pärnu, within walking distance of the center of town. \n\nC\n\nChris\n\nWonderful old school room with proper furniture. Excellent breakfast - super view and broad window place to sit and enjoy it. A real mini-bar\n\nScored out of 10, guest rating 9.1\n\nWonderful - What previous guests thought, 2,108 reviews\n\nPrice from $69.77 1 night, 2 adults\n\n![Alex Maja, hotel in Pärnu](https://cf.bstatic.com/xdata/images/hotel/square600/27007148.webp?k=76a0a05a2886bf5689e188d2e4c34d0909092cff75e5a5344516e06ceaab4a11&o=)\n\nAlex Maja\n\nHotel in City Center, Pärnu\n\nAlex Maja, located in the center of Pärnu, offers wel",
+    "provenance": {
+      "capture_path": "backend/evaluations/pipeline/opt-final-fixed/estonia_hotels.json",
+      "capture_sha256": "4be7a40f61475673d1e32058d8ba66688f215f3a8d6c87e698fa2ae855ebf8fa",
+      "full_source_text_sha256": "629e0dea8c325901e0fdada98a9d02ab8d7dc73244299ee59903ea9569b0d6da",
+      "excerpt_start": 0,
+      "excerpt_end": 2200
+    }
+  },
+  "loyly_public": {
+    "source_id": "S_352dce75abfa242d",
+    "title": "Public Sauna | Löyly",
+    "url": "https://www.loylyhelsinki.fi/en/public-sauna",
+    "retrieval": "live",
+    "observed_at": "2026-11-14T15:30:32.953321+00:00",
+    "retrieved_at": "2026-11-14T15:30:32.953321+00:00",
+    "request_started_at": "2026-11-14T15:30:30.574776+00:00",
+    "crawl_source": "crawled",
+    "text": "The admission fee for a two-hour sauna visit is EUR 29.00. The price includes a towel, seat liner and shampoo and shower gel. Additional hours are charged at EUR 12.00 per hour. Saunas cannot be paid for with incentive vouchers. Saunas cannot be paid for with a gift card in the reservation system, so please contact us by email if you want to pay with gift card. You can also purchase a Löyly souven",
+    "provenance": {
+      "capture_path": "backend/evaluations/pipeline/opt-final-fixed/loyly_price.json",
+      "capture_sha256": "9d5aceb284984992d3301596034f79657abf8184f683ebdfbf5284103e5a4e6b",
+      "full_source_text_sha256": "9555812b5282b2e2e1b82368e6788b7c1f0058bf619691580b3c02162b3be3eb",
+      "excerpt_start": 1109,
+      "excerpt_end": 1509
+    }
+  }
+}

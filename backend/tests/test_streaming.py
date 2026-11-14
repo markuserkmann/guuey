@@ -29,7 +29,7 @@ def test_real_model_stream_emits_text_before_finishing():
     assert result.usage.requests == 1
 
 
-def test_structured_research_streams_candidate_progress_before_verification(monkeypatch):
+def test_structured_research_shows_candidate_progress_before_verification(monkeypatch):
     from datetime import UTC, datetime
     from pydantic_ai.messages import ModelResponse, ToolCallPart
     from pydantic_ai.models.function import DeltaToolCall
@@ -49,6 +49,9 @@ def test_structured_research_streams_candidate_progress_before_verification(monk
         yield {0: DeltaToolCall(json_args=text[100:])}
 
     async def verify(messages, info):
+        if 'findings' in info.output_tools[0].parameters_json_schema['properties']:
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, payload)])
+        assert updates and updates[-1]['kind'] == 'progress'
         claims = json.loads(messages[0].parts[-1].content)
         return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"judgments": [
             {"claim_id": claim['claim_id'], "supported": True, "reason": "Direct evidence."} for claim in claims]})])
@@ -69,7 +72,9 @@ def test_structured_research_streams_candidate_progress_before_verification(monk
     assert 'Laptop A' in updates[-1]['text']
     assert '€900' not in updates[-1]['text']
     assert '€900' in reply
-    assert 'Finland: **Unverified**' in reply
+    assert 'To confirm for Laptop A' in reply
+    assert 'Finland' in reply
+    assert 'Not found' not in reply
     assert trace['verification']['claims'] == 2
 
 

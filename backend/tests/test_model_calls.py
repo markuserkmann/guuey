@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from pydantic_ai.exceptions import ModelAuthenticationError, ModelHTTPError, ModelQuotaExceededError, ModelRateLimitError
+from pydantic_ai.usage import RunUsage
 
 from app import model_calls, worker
 from app.model_calls import call_model, error_details, model_call_events
@@ -12,17 +13,18 @@ from app.store import ChatStore
 
 def test_rate_limit_retries_with_provider_delay(monkeypatch):
     calls, waits, events = [], [], []
+    result = SimpleNamespace(output="answer", usage=RunUsage())
 
     def run(*args, **kwargs):
         calls.append(1)
         if len(calls) == 1:
             raise ModelRateLimitError("fixture-model", "busy", retry_after=3)
-        return "answer"
+        return result
 
     monkeypatch.setattr(model_calls.time, "sleep", waits.append)
     token = model_call_events.set(events.append)
     try:
-        assert call_model(SimpleNamespace(run_sync=run), "hello", stage="answering") == "answer"
+        assert call_model(SimpleNamespace(run_sync=run), "hello", stage="answering") is result
     finally:
         model_call_events.reset(token)
     assert len(calls) == 2

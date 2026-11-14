@@ -1,0 +1,208 @@
+{
+  "case_id": "finland_laptops",
+  "request": "Find 3 laptops I can buy in Finland for under €700, with at least 16 GB RAM and a 512 GB SSD. Show exact configuration, current price, stock and seller links.",
+  "audit_status": "audited historical captured facts; partial task gold",
+  "scope": "Only the listed facts were audited against captured passages. This is a partial factual gold set, not a full candidate × requirement recall benchmark. Prices are snapshots for 2026-11-14, not current recommendations.",
+  "facts": [
+    {
+      "id": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava:ram_16gb",
+      "fact": "At least 16 GB RAM",
+      "candidate": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava",
+      "requirement_pattern": "ram|memory",
+      "expected_value": "16 GB",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/outlet/hp-laptop-15-fc0851no-r7-7730u16512-156-kannettava/969385",
+      "quote": "16 GB DDR4 RAM, 512 GB SSD",
+      "passage_id": "P_19879ede483ddf49",
+      "observed_at": "2026-11-14T15:30:56.994858+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "\\b16\\s*(?:gb|gt)\\b"
+      ]
+    },
+    {
+      "id": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava:ssd_512gb",
+      "fact": "At least 512 GB SSD",
+      "candidate": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava",
+      "requirement_pattern": "ssd|storage",
+      "expected_value": "512 GB SSD",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/outlet/hp-laptop-15-fc0851no-r7-7730u16512-156-kannettava/969385",
+      "quote": "16 GB DDR4 RAM, 512 GB SSD",
+      "passage_id": "P_19879ede483ddf49",
+      "observed_at": "2026-11-14T15:30:56.994858+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "\\b512\\s*(?:gb|gt).*ssd"
+      ]
+    },
+    {
+      "id": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava:price_under_700",
+      "fact": "Price under 700 EUR",
+      "candidate": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava",
+      "requirement_pattern": "price|cost|budget",
+      "expected_value": "€559",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/outlet/hp-laptop-15-fc0851no-r7-7730u16512-156-kannettava/969385",
+      "quote": "Price: 559,00 €",
+      "passage_id": "P_a7c7006da6f55752",
+      "observed_at": "2026-11-14T15:30:56.994858+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "(?:€\\s*559(?:[.,]00)?|559(?:[.,]00)?\\s*(?:€|eur)|eur\\s*559(?:[.,]00)?)"
+      ]
+    },
+    {
+      "id": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava:requested_type",
+      "fact": "Matches the requested type: laptop",
+      "candidate": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava",
+      "requirement_pattern": "type",
+      "expected_value": "laptop",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/outlet/hp-laptop-15-fc0851no-r7-7730u16512-156-kannettava/969385",
+      "quote": "HP Laptop 15-fc0851no R7-7730U/16/512 15,6\" kannettava",
+      "passage_id": "P_904246150de623f9",
+      "observed_at": "2026-11-14T15:30:56.994858+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "laptop|kannettava"
+      ]
+    },
+    {
+      "id": "Asus Vivobook i7-12/16/512 15,6\" kannettava:ram_16gb",
+      "fact": "At least 16 GB RAM",
+      "candidate": "Asus Vivobook i7-12/16/512 15,6\" kannettava",
+      "requirement_pattern": "ram|memory",
+      "expected_value": "16 GB",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet/asus-vivobook-i7-1216512-156-kannettava/648019",
+      "quote": "16 GB DDR4 RAM, 512 GB M.2 PCIe SSD",
+      "passage_id": "P_df3ae125005a3a7a",
+      "observed_at": "2026-11-14T15:30:56.994858+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "\\b16\\s*(?:gb|gt)\\b"
+      ]
+    },
+    {
+      "id": "Asus Vivobook i7-12/16/512 15,6\" kannettava:ssd_512gb",
+      "fact": "At least 512 GB SSD",
+      "candidate": "Asus Vivobook i7-12/16/512 15,6\" kannettava",
+      "requirement_pattern": "ssd|storage",
+      "expected_value": "512 GB SSD",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet/asus-vivobook-i7-1216512-156-kannettava/648019",
+      "quote": "16 GB DDR4 RAM, 512 GB M.2 PCIe SSD",
+      "passage_id": "P_df3ae125005a3a7a",
+      "observed_at": "2026-11-14T15:30:56.994858+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "\\b512\\s*(?:gb|gt).*ssd"
+      ]
+    },
+    {
+      "id": "Asus Vivobook i7-12/16/512 15,6\" kannettava:price_under_700",
+      "fact": "Price under 700 EUR",
+      "candidate": "Asus Vivobook i7-12/16/512 15,6\" kannettava",
+      "requirement_pattern": "price|cost|budget",
+      "expected_value": "€697",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet/asus-vivobook-i7-1216512-156-kannettava/648019",
+      "quote": "Price: 697,00 €",
+      "passage_id": "P_93a84a89159f3437",
+      "observed_at": "2026-11-14T15:30:56.994858+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "(?:€\\s*697(?:[.,]00)?|697(?:[.,]00)?\\s*(?:€|eur)|eur\\s*697(?:[.,]00)?)"
+      ]
+    },
+    {
+      "id": "Asus Vivobook i7-12/16/512 15,6\" kannettava:requested_type",
+      "fact": "Matches the requested type: laptop",
+      "candidate": "Asus Vivobook i7-12/16/512 15,6\" kannettava",
+      "requirement_pattern": "type",
+      "expected_value": "laptop",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet/asus-vivobook-i7-1216512-156-kannettava/648019",
+      "quote": "Asus Vivobook i7-12/16/512 15,6\" kannettava",
+      "passage_id": "P_a79518daf9bea510",
+      "observed_at": "2026-11-14T15:30:56.994858+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "laptop|kannettava"
+      ]
+    },
+    {
+      "id": "HP Laptop 14-ep0829no i5/16/512 14\" kannettava:ram_16gb",
+      "fact": "At least 16 GB RAM",
+      "candidate": "HP Laptop 14-ep0829no i5/16/512 14\" kannettava",
+      "requirement_pattern": "ram|memory",
+      "expected_value": "16 GB",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet/hp-laptop-14-ep0829no-i516512-14-kannettava/911982",
+      "quote": "16 GB DDR4 RAM, 512 GB SSD-muistia.",
+      "passage_id": "P_5a77dfaef93a047b",
+      "observed_at": "2026-11-14T15:31:19.743008+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "\\b16\\s*(?:gb|gt)\\b"
+      ]
+    },
+    {
+      "id": "HP Laptop 14-ep0829no i5/16/512 14\" kannettava:ssd_512gb",
+      "fact": "At least 512 GB SSD",
+      "candidate": "HP Laptop 14-ep0829no i5/16/512 14\" kannettava",
+      "requirement_pattern": "ssd|storage",
+      "expected_value": "512 GB SSD",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet/hp-laptop-14-ep0829no-i516512-14-kannettava/911982",
+      "quote": "16 GB DDR4 RAM, 512 GB SSD-muistia.",
+      "passage_id": "P_5a77dfaef93a047b",
+      "observed_at": "2026-11-14T15:31:19.743008+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "\\b512\\s*(?:gb|gt).*ssd"
+      ]
+    },
+    {
+      "id": "HP Laptop 14-ep0829no i5/16/512 14\" kannettava:requested_type",
+      "fact": "Matches the requested type: laptop",
+      "candidate": "HP Laptop 14-ep0829no i5/16/512 14\" kannettava",
+      "requirement_pattern": "type",
+      "expected_value": "laptop",
+      "acceptable_source_classes": [
+        "retailer"
+      ],
+      "source_url": "https://www.gigantti.fi/product/tietokoneet-ja-toimistotarvikkeet/tietokoneet/kannettavat-tietokoneet/hp-laptop-14-ep0829no-i516512-14-kannettava/911982",
+      "quote": "HP Laptop 14-ep0829no i5/16/512 14\" kannettava",
+      "passage_id": "P_a7859a7df9ab704d",
+      "observed_at": "2026-11-14T15:31:19.743008+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "laptop|kannettava"
+      ]
+    }
+  ],
+  "capture_path": "backend/evaluations/pipeline/opt-final-fixed/finland_laptops.json",
+  "capture_sha256": "bd493645b7880dabcd3cb0fbca107d33a657eb88d280ebf7bbed1d1112859362"
+}

@@ -1,0 +1,7 @@
+{
+  "case_id": "vegan_anniversary",
+  "request": "Find 3 fully vegan (not just vegan-friendly) restaurants in Helsinki for an anniversary dinner for two next Saturday at 19:00, total under €150. Check whether they're open then and prepare a reservation request for the best one.",
+  "audit_status": "awaiting live capture and semantic audit",
+  "scope": "No audited evidence exists for this case yet; do not treat an empty gold set as a passing recall score.",
+  "facts": []
+}

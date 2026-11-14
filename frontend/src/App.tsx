@@ -124,7 +124,8 @@ export function App() {
         if (!current) return;
         setChats(items);
         setHealth(status);
-        const selected = items[0] ?? (await createChat(token));
+        const requestedId = new URL(window.location.href).searchParams.get("chat");
+        const selected = items.find((item) => item.id === requestedId) ?? items[0] ?? (await createChat(token));
         if (!current) return;
         if (items.length === 0) setChats([selected]);
         const chat = await loadChat(token, selected.id);
@@ -149,6 +150,13 @@ export function App() {
   }, [token]);
 
   useEffect(() => {
+    if (!activeId) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("chat", activeId);
+    window.history.replaceState(null, "", url);
+  }, [activeId]);
+
+  useEffect(() => {
     if (!token) return;
     let current = true;
     const timer = window.setTimeout(() => {
@@ -165,7 +173,7 @@ export function App() {
   }, [token, query]);
 
   async function openChat(id: string) {
-    if (!token || busy || loadingChat || id === activeId) return;
+    if (!token || submission || loadingChat || id === activeId) return;
     const sequence = ++loadSequence.current;
     setChatReady(false);
     setLoadingChat(true);
@@ -175,6 +183,7 @@ export function App() {
     setSubmission(null);
     setSyncedRunId("");
     setRun(null);
+    setBusy(false);
     setDraft("");
     setAttachments([]);
     setMessages([]);
@@ -195,7 +204,7 @@ export function App() {
   }
 
   async function newChat() {
-    if (!token || busy || loadingChat) return;
+    if (!token || submission || loadingChat) return;
     setError("");
     try {
       const chat = await createChat(token);
@@ -496,7 +505,7 @@ export function App() {
           activeId={activeId}
           query={query}
           onQueryChange={setQuery}
-          disabled={busy || loadingChat}
+          disabled={!!submission || loadingChat}
           onNewChat={() => void newChat()}
           onSelect={(id) => void openChat(id)}
         />

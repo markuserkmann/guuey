@@ -1,0 +1,45 @@
+{
+  "case_id": "estonia_hotels",
+  "request": "Get me top 5 holiday spots in estonia on an budget and hotels for them format them into an table",
+  "audit_status": "audited historical captured facts; partial task gold",
+  "scope": "Only the listed facts were audited against captured passages. This is a partial factual gold set, not a full candidate × requirement recall benchmark. Prices are snapshots for 2026-11-14, not current recommendations.",
+  "facts": [
+    {
+      "id": "Tartu:named_hotel",
+      "fact": "Named hotel for this destination, with its location or proximity stated",
+      "candidate": "Tartu",
+      "requirement_pattern": "named.*hotel|hotel.*destination",
+      "expected_value": "hostel alternative",
+      "acceptable_source_classes": [
+        "official"
+      ],
+      "source_url": "https://www.hektorstay.com/hostels/en/accommodation-tartu/",
+      "quote": "accommodation in tartu | hektor design hostel | estonia",
+      "passage_id": "P_f0825a41f34b13ef",
+      "observed_at": "2026-11-14T15:30:31.028517+00:00",
+      "expected_status": "not_met",
+      "value_patterns": [
+        "hostel"
+      ]
+    },
+    {
+      "id": "Tartu:budget_hotel_price",
+      "fact": "Economical pricing for private room accommodation",
+      "candidate": "Tartu",
+      "requirement_pattern": "budget.*hotel|economical.*pric|room.*price",
+      "expected_value": "from 31€",
+      "acceptable_source_classes": [
+        "official"
+      ],
+      "source_url": "https://www.hektorstay.com/hostels/en/accommodation-tartu/",
+      "quote": "from 31€",
+      "passage_id": "P_dea97d2b4918dc33",
+      "observed_at": "2026-11-14T15:30:31.028517+00:00",
+      "value_patterns": [
+        "(?:from|alkaen)\\s*31\\s*(?:€|eur)"
+      ]
+    }
+  ],
+  "capture_path": "backend/evaluations/pipeline/opt-final-fixed/estonia_hotels.json",
+  "capture_sha256": "4be7a40f61475673d1e32058d8ba66688f215f3a8d6c87e698fa2ae855ebf8fa"
+}

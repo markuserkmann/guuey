@@ -1,0 +1,184 @@
+{
+  "method": "Human review of the captured statement, quote and source context. Correct denotes support in the historical capture, not present-day truth. Source viability is scored separately.",
+  "claims": {
+    "8c6ae860ce990bc719ab4d598cb7ad66439041b378e79fd3c7bb309ddd617a4e": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "00c6038211079d3e366ce47e2b98a3db05e5b07f92a6465a01ad956088068e01": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "66ff93ad4d73ce9f31cf5b9211fccb436f8fa54c19d637a94eec2fef06971764": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "95f6fac66d4f8b9f5778d4a8306e69001ef2942993b57155fd90f8a84044a797": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "43f5bae50ae97f0df02fd732bc55b5765ed33822c8f52f2a683267b861fc7053": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "15eb859c9f4db2b14121c9f07b43a373b9c2c271192eb75437b1ca1b011ea2ba": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "707b5e6acc0abb7d636dbd032662ed9cbbfeee6c3747832ca932ff4abb4c6f30": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "ada1301a602efd432a33c0a43c019dabddfaf6924365d550775faf6a04f05c61": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "da898eaa5efc8db7193d9e7afb271856e570a15d71a15bdd80fa06e725eeda1c": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "95fd174010d71bc3f985dfffdcdcade10b1f0974a2e3ce2c0783873865f5d60b": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "56e227d2c601a8a5465302d6f6a0adb80c36d8064065fb995c45d9b26c577e16": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "686a027ae2c4e84a70bafb6a0956a05863acce4aa44eccfc9e6021e114fbc3ec": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "59f6536af6bb4315fce14d71e612dcf6c983a7d1fa4856055737d648348c84aa": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "ed919d65a88745219ded7478753638584f8e5787637aed2fd06f22ccf392e615": {
+      "label": "overreach",
+      "reason": "The hotel address and distance are quoted; a Saaremaa Museum mention does not establish the island relationship.",
+      "method": "human captured-passage audit"
+    },
+    "d8846ee2eba7e16b9ec048037ce4c6fb56db148a7eed8c83c938f50fffc6bdfd": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "dfb7ffad74a365daf9b3e81c421bb5954991f4bacac6e643ad6c42573460b5f5": {
+      "label": "wrong_entity",
+      "reason": "The sentence names Narva-Jõesuu, not Narva, and describes selected spa day passes rather than this destination overall.",
+      "method": "human captured-passage audit"
+    },
+    "1ce9339d3874a491509017b1e5dd2b5d782dc3c6cede0b7464991852662db367": {
+      "label": "misread",
+      "reason": "The source describes Transhostel Romantika as an apartment; the claim marks the hotel requirement met.",
+      "method": "human captured-passage audit"
+    },
+    "ffe697cf3ead30d9bf5a9f082434f3fb060f6327c4f9abf612c0359842ff0d98": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "82723dbcb8422b1d1559c3d7d98fb5ac292c222a13c3b3a17c71f085e45217ab": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "152fe2bdb140e4bc7a1241ab3472a304ff6eec3178ff3d4d971b72b3d930610f": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "9bca652798d0632998f118327ea5828cd601227de82a5e884c65c4e8f772b897": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "8892bd7aad449656d80d0714fff86f1a87838b8c4d320755d51c63a3f03feebb": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "ce474b506b93d6ed69d9436aaef206ebc9a4c082181d59bc96cf7b656f4d9ec3": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "e306e1a41f5e518f7abf832d8087dff4dc412c5b779f144493abd5c9d2548f0d": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "27ac17e8ab35a4265dfffdecefe908b674c1fea3458042c102e1078034e778de": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "909afe7483e568fbc2aaf7e316bec602cb29da97f271df3fafd18b511683ba94": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "a05cb4774f92268e572140f1417ccae8a58527f68659a5e55a16f452634fd12b": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "04bb35914ec512466c9cb9a6702e8b50c245c95fd5ec6132cdd99eecf7bac177": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "75631aac793fbf0cb7f72867edca3a4201490bbcaada469c85ad93238a9c28d5": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "3e8ab783bd226ed40e15632a2fb7a78c83d1a19fcf90a8b2c36605782ca8c890": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "8dc89c1952bbc992788460d0c042fef97a5ad1866025d17214f0a924117abc27": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "283b1df1d348468a6cddb881af55a6bb3f252f5eb04483274b46dac5d95c5aeb": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    },
+    "bc519bb2c366e8a0a39323a37e3ebf990f144eeb27a7deac342436f7de65d407": {
+      "label": "correct",
+      "reason": "The displayed fact is supported for this entity in the captured passage and its local context.",
+      "method": "human captured-passage audit"
+    }
+  },
+  "source_classes": {
+    "https://www.trivago.com/en-US/oar/hotel-mardi-kuressaare?search=100-945143": "aggregator",
+    "https://www.hostelworld.com/hostels/europe/estonia/tallinn/f/private-rooms/": "seo",
+    "https://www.booking.com/budget/city/ee/parnu.html": "seo",
+    "https://www.hotelscombined.com/Place/Saare_County.htm": "seo",
+    "https://www.estonia-hotels.net/en/theme/cheap-and-budget-hotels-9/28/": "seo",
+    "https://ee.lastminute.com/hotellid/ee_eesti/paernu-d1108156994": "seo",
+    "https://www.hektorstay.com/hostels/en/accommodation-tartu/": "official",
+    "https://www.hektorstay.com/hostels/en/private_room_category/rooms-for-1/": "official",
+    "https://www.loylyhelsinki.fi/en/public-sauna": "official",
+    "https://varaus.asio.fi/onlinekalenteri/loyly/guest.php?page=&ss_lang=eng": "official",
+    "https://www.loylyhelsinki.fi/yleinensauna": "official",
+    "https://www.loylyhelsinki.fi/en": "official"
+  }
+}

@@ -98,7 +98,8 @@ def send_message(chat_id: str, body: SendMessageRequest, owner: str = Owner):
 
 from typing import Literal
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from app.task_context import validate_timezone
 from app.runs import RunStore
 
 
@@ -107,6 +108,9 @@ class CreateRunRequest(BaseModel):
     mode: Literal["auto", "fast", "deep"] = "auto"
     request_id: UUID
     attachments: Attachments = Field(default_factory=list)
+    timezone: str = Field(default="UTC", max_length=100)
+
+    _timezone = field_validator('timezone')(validate_timezone)
 
 
 @lru_cache(maxsize=1)
@@ -125,7 +129,7 @@ def owned_run(owner, run_id):
 def create_run(chat_id: str, body: CreateRunRequest, owner: str = Owner):
     try:
         return get_runs().create(owner, chat_id, str(body.request_id), body.message, body.mode,
-                                 attachments=[file.model_dump() for file in body.attachments])
+                                 attachments=[file.model_dump() for file in body.attachments], timezone=body.timezone)
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
@@ -168,6 +172,6 @@ def continue_run(run_id: str, owner: str = Owner):
     run = owned_run(owner, run_id)
     try:
         return get_runs().create(owner, run["chat_id"], f"continue:{run_id}", run["message"], "deep", run_id,
-                                attachments=run["attachments"])
+                                attachments=run["attachments"], timezone=run['timezone'])
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc

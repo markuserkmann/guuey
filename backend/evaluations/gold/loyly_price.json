@@ -1,0 +1,118 @@
+{
+  "case_id": "loyly_price",
+  "request": "What does an adult public sauna session at Löyly Helsinki cost, how long is it, and what is included? Use the operator's current information and give the booking link.",
+  "audit_status": "audited historical captured facts; partial task gold",
+  "scope": "Only the listed facts were audited against captured passages. This is a partial factual gold set, not a full candidate × requirement recall benchmark. Prices are snapshots for 2026-11-14, not current recommendations.",
+  "facts": [
+    {
+      "id": "Löyly Helsinki:loyly_sauna_price",
+      "fact": "Adult public sauna session price at Löyly Helsinki",
+      "candidate": "Löyly Helsinki",
+      "requirement_pattern": "price|cost",
+      "expected_value": "EUR 29.00",
+      "acceptable_source_classes": [
+        "official"
+      ],
+      "source_url": "https://www.loylyhelsinki.fi/en/public-sauna",
+      "quote": "The admission fee for a two-hour sauna visit is EUR 29.00.",
+      "passage_id": "P_9a1e32776fd6bccf",
+      "observed_at": "2026-11-14T15:30:32.953321+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "(?:€\\s*29(?:[.,]00)?|29(?:[.,]00)?\\s*(?:€|eur)|eur\\s*29(?:[.,]00)?)"
+      ]
+    },
+    {
+      "id": "Löyly Helsinki:loyly_sauna_duration",
+      "fact": "Sauna session duration",
+      "candidate": "Löyly Helsinki",
+      "requirement_pattern": "duration|session length",
+      "expected_value": "two hours",
+      "acceptable_source_classes": [
+        "official"
+      ],
+      "source_url": "https://www.loylyhelsinki.fi/en/public-sauna",
+      "quote": "The admission fee for a two-hour sauna visit is EUR 29.00.",
+      "passage_id": "P_9a1e32776fd6bccf",
+      "observed_at": "2026-11-14T15:30:32.953321+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "\\b(?:two|2)[ -]?(?:hours?|h)\\b"
+      ]
+    },
+    {
+      "id": "Löyly Helsinki:loyly_sauna_inclusions",
+      "fact": "What is included in the public sauna ticket (e.g. towel, locker, seat cover, shower/sea access)",
+      "candidate": "Löyly Helsinki",
+      "requirement_pattern": "inclu|amenit",
+      "expected_value": "towel, seat liner, shampoo, and shower gel",
+      "acceptable_source_classes": [
+        "official"
+      ],
+      "source_url": "https://www.loylyhelsinki.fi/en/public-sauna",
+      "quote": "The price includes a towel, seat liner and shampoo and shower gel.",
+      "passage_id": "P_9a1e32776fd6bccf",
+      "observed_at": "2026-11-14T15:30:32.953321+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "(?=.*towel)(?=.*seat (?:liner|cover))(?=.*shampoo)(?=.*shower gel)"
+      ]
+    },
+    {
+      "id": "Löyly Helsinki:loyly_sauna_booking_link",
+      "fact": "Official booking link / operator reservation page URL",
+      "candidate": "Löyly Helsinki",
+      "requirement_pattern": "booking|reservation",
+      "expected_value": "online booking calendar",
+      "acceptable_source_classes": [
+        "official"
+      ],
+      "source_url": "https://varaus.asio.fi/onlinekalenteri/loyly/guest.php?page=&ss_lang=eng",
+      "quote": "Löyly Helsinki - Room booking",
+      "passage_id": "P_5370a7a8d0a23376",
+      "observed_at": "2026-11-14T15:30:32.953321+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "book|reserv"
+      ]
+    },
+    {
+      "id": "Löyly Helsinki:location",
+      "fact": "Located in or provides service in Helsinki",
+      "candidate": "Löyly Helsinki",
+      "requirement_pattern": "location|located",
+      "expected_value": "Hernesaarenranta 4, 00150 Helsinki",
+      "acceptable_source_classes": [
+        "official"
+      ],
+      "source_url": "https://www.loylyhelsinki.fi/en/public-sauna",
+      "quote": "Hernesaarenranta 4, 00150 Helsinki",
+      "passage_id": "P_500d02e4ee32e456",
+      "observed_at": "2026-11-14T15:30:32.953321+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "hernesaarenranta\\s+4.*00150.*helsinki"
+      ]
+    },
+    {
+      "id": "Löyly Helsinki:requested_type",
+      "fact": "Matches the requested type: public sauna session at Löyly Helsinki",
+      "candidate": "Löyly Helsinki",
+      "requirement_pattern": "type",
+      "expected_value": "public sauna",
+      "acceptable_source_classes": [
+        "official"
+      ],
+      "source_url": "https://www.loylyhelsinki.fi/en/public-sauna",
+      "quote": "Public Sauna | Löyly",
+      "passage_id": "P_9168303cb3940b89",
+      "observed_at": "2026-11-14T15:30:32.953321+00:00",
+      "expected_status": "met",
+      "value_patterns": [
+        "public sauna"
+      ]
+    }
+  ],
+  "capture_path": "backend/evaluations/pipeline/opt-final-fixed/loyly_price.json",
+  "capture_sha256": "9d5aceb284984992d3301596034f79657abf8184f683ebdfbf5284103e5a4e6b"
+}

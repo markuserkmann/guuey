@@ -1,0 +1,16 @@
+# Persistent request accounting; approved evaluation ceiling is 280 requests.
+services:
+  backend:
+    environment:
+      EXA_USAGE_DATABASE: /data/butler-pass-20261114.sqlite3
+      EXA_REQUEST_LIMIT: '280'
+      GEMINI_PLANNING_MODEL: gemini-3.5-flash
+      GEMINI_RESEARCH_MODEL: gemini-3.5-flash
+      GEMINI_VERIFICATION_MODEL: gemini-3.5-flash
+  worker:
+    environment:
+      EXA_USAGE_DATABASE: /data/butler-pass-20261114.sqlite3
+      EXA_REQUEST_LIMIT: '280'
+      GEMINI_PLANNING_MODEL: gemini-3.5-flash
+      GEMINI_RESEARCH_MODEL: gemini-3.5-flash
+      GEMINI_VERIFICATION_MODEL: gemini-3.5-flash

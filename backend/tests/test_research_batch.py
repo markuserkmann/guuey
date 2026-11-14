@@ -7,7 +7,7 @@ def plan(*queries):
     return SearchPlan(contract=ResearchContract(), queries=[SearchQuery(query=q, objective=q) for q in queries]), None
 
 
-def test_parallel_searches_deduplicate_and_fetch_pages(monkeypatch):
+def test_parallel_searches_deduplicate_and_reuse_full_search_text(monkeypatch):
     monkeypatch.setattr(orchestrator, "plan_searches", lambda *args: plan("one", "two"))
     def search(query, **kwargs):
         return [{"url": "https://shared.example/", "title": "Shared", "text": query},
@@ -20,8 +20,8 @@ def test_parallel_searches_deduplicate_and_fetch_pages(monkeypatch):
     monkeypatch.setattr(orchestrator, "extract_pages", extract)
     monkeypatch.setattr(orchestrator, "generate_reply", lambda *args, **kwargs: ("answer", {}))
     result = orchestrator.run_turn("find items", [], search_requested=True)
-    assert len(seen) == 3
-    assert result.sources[0]["text"] == "full page"
+    assert len(seen) == 0
+    assert result.sources[0]["text"] == "one"
     assert result.sources[1]["text"] in {"one", "two"}
 
 
@@ -37,7 +37,7 @@ def test_batch_continues_when_a_search_fails(monkeypatch):
     assert orchestrator.run_turn("query", [], search_requested=True).sources[0]["text"] == "evidence"
 
 
-def test_retains_candidates_beyond_ten_and_extracts_all(monkeypatch):
+def test_retains_candidates_beyond_ten_without_refetching_text(monkeypatch):
     monkeypatch.setattr(orchestrator, 'plan_searches', lambda *args: plan('retail', 'compatibility'))
     monkeypatch.setattr(orchestrator, 'search', lambda query, **kwargs: [
         {'url': f'https://example.com/{query}/{i}', 'title': query, 'text': 'snippet'}
@@ -49,7 +49,7 @@ def test_retains_candidates_beyond_ten_and_extracts_all(monkeypatch):
     monkeypatch.setattr(orchestrator, 'generate_reply', lambda *args, **kwargs: ('answer', {}))
     result = orchestrator.run_turn('top ten laptops', [], search_requested=True)
     assert len(result.sources) == 20
-    assert all(source['text'] == 'Full specifications' for source in result.sources)
+    assert all(source['text'] == 'snippet' for source in result.sources)
 
 
 def test_followup_sources_survive_seed_limit(monkeypatch):

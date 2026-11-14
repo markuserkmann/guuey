@@ -25,6 +25,8 @@ class RunStore(ChatStore):
                 db.execute("ALTER TABLE runs ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'")
             if 'live_output' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
                 db.execute("ALTER TABLE runs ADD COLUMN live_output TEXT")
+            if 'timezone' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
+                db.execute("ALTER TABLE runs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
 
     def get(self, owner, run_id):
         with self.connect() as db:
@@ -41,13 +43,15 @@ class RunStore(ChatStore):
         data.pop('owner', None)
         return data
 
-    def create(self, owner, chat_id, request_id, message, mode, parent_id=None, attachments=None):
+    def create(self, owner, chat_id, request_id, message, mode, parent_id=None, attachments=None, timezone='UTC'):
+        from app.task_context import validate_timezone
+        validate_timezone(timezone)
         attachments = attachments or []
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             old = db.execute('SELECT * FROM runs WHERE owner=? AND request_id=?', (owner, request_id)).fetchone()
             if old:
-                if (old['chat_id'], old['message'], old['mode'], json.loads(old['attachments'])) != (chat_id, message, mode, attachments):
+                if (old['chat_id'], old['message'], old['mode'], json.loads(old['attachments']), old['timezone']) != (chat_id, message, mode, attachments, timezone):
                     raise ValueError('Request ID already used with different content')
                 return self.decode(old)
             if not db.execute('SELECT id FROM chats WHERE id=? AND owner=?', (chat_id, owner)).fetchone():
@@ -61,9 +65,13 @@ class RunStore(ChatStore):
                 parent = db.execute('SELECT * FROM runs WHERE id=? AND owner=? AND chat_id=?', (parent_id, owner, chat_id)).fetchone()
                 if not parent or parent['status'] != 'partial' or parent['mode'] == 'deep':
                     raise ValueError('This run cannot be continued')
+                if db.execute('SELECT id FROM runs WHERE chat_id=? AND rowid > (SELECT rowid FROM runs WHERE id=?) LIMIT 1',
+                              (chat_id, parent_id)).fetchone():
+                    raise ValueError('A newer turn exists; continue the current task instead')
             identifier, timestamp = str(uuid4()), now()
             db.execute('INSERT INTO runs(id,owner,chat_id,request_id,message,mode,status,phase,created_at,updated_at,parent_id,attachments) VALUES(?,?,?,?,?,?,?, ?,?,?,?,?)',
                        (identifier, owner, chat_id, request_id, message, mode, 'queued', 'queued', timestamp, timestamp, parent_id, json.dumps(attachments)))
+            db.execute('UPDATE runs SET timezone=? WHERE id=?', (timezone, identifier))
         return self.get(owner, identifier)
 
     def claim(self):
@@ -108,6 +116,10 @@ class RunStore(ChatStore):
             live = json.loads(row['live_output']) if row['live_output'] else None
             if not result and live and live.get('kind') == 'answer' and live.get('text'):
                 result = {'reply': live['text'], 'sources': []}
+                if status == 'completed':
+                    status, phase = 'partial', 'incomplete_answer'
+            if status == 'completed' and not result:
+                status, phase = 'failed', 'missing_result'
             if result:
                 timestamp = now()
                 if not row['parent_id']:

@@ -1,0 +1,7 @@
+{
+  "case_id": "business_info",
+  "request": "Give me the business ID (Y-tunnus), registered address, line of business and current CEO of Supercell Oy, with official sources.",
+  "audit_status": "awaiting live capture and semantic audit",
+  "scope": "No audited evidence exists for this case yet; do not treat an empty gold set as a passing recall score.",
+  "facts": []
+}

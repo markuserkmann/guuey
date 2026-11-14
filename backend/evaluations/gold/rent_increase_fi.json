@@ -1,0 +1,7 @@
+{
+  "case_id": "rent_increase_fi",
+  "request": "My landlord in Helsinki says my rent goes up 9% from 1 January 2027. My lease is indefinite and has a clause tying the rent to the cost-of-living index. Is this increase allowed, and what can I do? Draft a short message to the landlord asking how the increase was calculated.",
+  "audit_status": "awaiting live capture and semantic audit",
+  "scope": "No audited evidence exists for this case yet; do not treat an empty gold set as a passing recall score.",
+  "facts": []
+}

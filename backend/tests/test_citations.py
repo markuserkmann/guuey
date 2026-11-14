@@ -15,7 +15,7 @@ def test_partial_finding_keeps_supported_requirement_and_link():
     text, issues = render_answer(answer(), SOURCES)
     assert "16 GB installed" in text
     assert "https://shop.example/product" in text
-    assert "Unverified" in text
+    assert "To confirm" in text and "Not found" not in text
     assert not issues
 
 
@@ -40,7 +40,7 @@ def test_bad_finding_does_not_discard_good_finding():
     assert issues
 
 
-def test_live_pipeline_repairs_missing_evidence_once(monkeypatch):
+def test_live_pipeline_reports_missing_evidence_without_retry(monkeypatch):
     from app import chat
     from pydantic_ai.models.function import FunctionModel
     from pydantic_ai.messages import ModelResponse, ToolCallPart
@@ -57,9 +57,9 @@ def test_live_pipeline_repairs_missing_evidence_once(monkeypatch):
     monkeypatch.setattr(chat, 'api_key', lambda: 'fixture-key')
     monkeypatch.setattr(chat, 'GoogleModel', lambda *args, **kwargs: FunctionModel(model))
     reply, trace = chat.generate_reply('Find a laptop', [], SOURCES)
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert trace['evidence_attempts'][0]['validation_issues']
-    assert not trace['validation_issues']
+    assert trace['validation_issues']
     assert 'https://shop.example/product' in reply
 
 
@@ -72,7 +72,7 @@ def test_sourced_candidate_survives_all_unknown_checks():
     text, issues = render_answer(output, SOURCES)
     assert '### 1. Laptop A' in text
     assert '[Source]' in text
-    assert 'Unverified' in text
+    assert 'To confirm' in text and 'Not found' not in text
     assert not issues
 
 
@@ -82,7 +82,7 @@ def test_rejected_findings_show_leads_without_stale_verified_count():
     output.limitations = ['Only 1 item has fully verified evidence matching all criteria.']
     text, issues = render_answer(output, SOURCES)
     assert '[Shop]' in text
-    assert 'these are leads' in text
+    assert 'provider links' in text
     assert 'Only 1 item' not in text
     assert '16 GB installed' not in text
     assert issues
@@ -115,7 +115,7 @@ def test_quote_matching_tolerates_presentation_changes():
     assert not passage_present('16 GB', '116 GB')
 
 
-def test_shortlist_has_sourced_description_and_labeled_assessment():
+def test_incomplete_shortlist_keeps_description_without_assessment():
     output = answer()
     item = output.findings[0]
     item.description = 'A laptop with 16 GB RAM.'
@@ -124,7 +124,8 @@ def test_shortlist_has_sourced_description_and_labeled_assessment():
     item.assessment_evidence = item.checks[0].evidence
     text, issues = render_answer(output, SOURCES)
     assert 'A laptop with 16 GB RAM' in text
-    assert 'Assessment:' in text
+    assert 'Assessment:' not in text
+    assert item.assessment not in text
     assert 'option to consider' in text
     assert not issues
 

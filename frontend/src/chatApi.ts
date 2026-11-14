@@ -155,7 +155,8 @@ export const startRun = (
 ) =>
   request<ResearchRun>(`/api/chats/${encodeURIComponent(chatId)}/runs`, token, {
     method: "POST",
-    body: JSON.stringify({ message, mode, request_id: requestId, attachments }),
+    body: JSON.stringify({ message, mode, request_id: requestId, attachments,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
   });
 export const getRun = (token: string, id: string) =>
   request<ResearchRun>(`/api/runs/${encodeURIComponent(id)}`, token);

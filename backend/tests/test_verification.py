@@ -26,6 +26,44 @@ def test_short_source_ids_resolve_before_quote_validation():
     assert all(check.evidence[0].source_url == SOURCES[0]["url"] for check in answer.findings[0].checks)
 
 
+def test_selected_duplicate_price_keeps_its_package_context_through_persistence():
+    from app.orchestration.passages import citation_passages
+
+    source = {"url": "https://sauna.example/prices", "title": "Sauna A",
+              "text": "# Sauna A\n\n## Public admission\n\n€20\n\n## Private rental deposit\n\n€20"}
+    passages = citation_passages(source)
+    reference = next(identifier for identifier, (quote, context) in passages.items()
+                     if quote == "€20" and "Private rental deposit" in context)
+    answer = GroundedAnswer.model_validate({"findings": [{"name": "Sauna A", "source_url": source["url"], "checks": [
+        {"requirement_id": "price", "requirement": "Private rental deposit", "status": "met", "statement": "€20 deposit",
+         "evidence": [{"source_url": source["url"], "quote": reference}]}]}]})
+    resolved = resolve_source_ids(answer, [source])
+    persisted = GroundedAnswer.model_validate_json(resolved.model_dump_json())
+    assert persisted.findings[0].checks[0].evidence[0].passage_id == reference
+    observed = []
+
+    async def model(messages, info):
+        observed.extend(json.loads(messages[0].parts[-1].content))
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"judgments": [
+            {"claim_id": 0, "supported": True, "reason": "Exact deposit passage."}]})])
+
+    verify_claims(persisted, [source], FunctionModel(model))
+    context = observed[0]["evidence"][0]["context"]
+    assert "Private rental deposit" in context
+    assert "Public admission" not in context
+
+
+def test_invalid_or_mismatched_passage_reference_cannot_fall_back_to_other_quote():
+    from app.orchestration.grounding import Evidence, matching_evidence
+    from app.orchestration.passages import citation_passages
+
+    source = {"url": "https://sauna.example/prices", "title": "Sauna A",
+              "text": "# Sauna A\n\n## Public admission\n\n€20\n\n## Private rental\n\n€100"}
+    reference = next(identifier for identifier, (quote, _) in citation_passages(source).items() if quote == "€100")
+    assert not matching_evidence([Evidence(source_url=source["url"], quote="€20", passage_id=reference)], [source])
+    assert not matching_evidence([Evidence(source_url=source["url"], quote="€20", passage_id="P_0000000000000000")], [source])
+
+
 def test_rejected_and_missing_verdicts_are_unknown_and_cached():
     requests = []
     async def model(messages, info):
@@ -83,6 +121,25 @@ def test_offer_opening_does_not_end_in_a_partial_word():
     assert output.findings[0].source_kind == "product"
 
 
+def test_offer_review_receives_complete_extracted_page():
+    text = "Laptop A. " + "specifications " * 600 + "Seller: Example Shop. Exact offer in stock."
+    source = {"url": "https://shop.example/a", "title": "Laptop A", "text": text}
+    answer = candidate()
+    answer.findings[0].source_url = source["url"]
+    answer.findings[0].source_kind = "product"
+    for check in answer.findings[0].checks:
+        check.status = "unknown"
+    observed = []
+
+    async def model(messages, info):
+        observed.extend(json.loads(messages[0].parts[-1].content))
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"judgments": [
+            {"claim_id": 0, "supported": True, "reason": "Individual seller offer."}]})])
+
+    verify_claims(answer, [source], FunctionModel(model))
+    assert observed[0]["evidence"][0]["context"] == text
+
+
 def test_shopping_pipeline_resolves_ids_audits_claims_and_counts_verification_usage(monkeypatch):
     from app import chat
     from app.orchestration.contracts import ResearchContract, Requirement
@@ -107,5 +164,5 @@ def test_shopping_pipeline_resolves_ids_audits_claims_and_counts_verification_us
     assert trace["usage"]["input_tokens"] == trace["generation_usage"]["input_tokens"] + trace["verification"]["usage"]["input_tokens"]
     assert trace["coverage"]["verified"] == 0
     assert trace["has_gaps"]
-    assert "these are leads" in reply
+    assert "provider links" in reply
     assert "S1" not in reply

@@ -1,0 +1,7 @@
+{
+  "case_id": "kela_benefits",
+  "request": "We are a family in Espoo with two children aged 2 and 7. One parent works full-time, the other became unemployed last month. Which Kela benefits or other support might we be missing, roughly how much is each, and what do we need to apply?",
+  "audit_status": "awaiting live capture and semantic audit",
+  "scope": "No audited evidence exists for this case yet; do not treat an empty gold set as a passing recall score.",
+  "facts": []
+}
