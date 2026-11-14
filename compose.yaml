@@ -18,6 +18,20 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+  worker:
+    build: ./backend
+    command: ["/app/.venv/bin/python", "-m", "app.worker"]
+    init: true
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_DECISION_MODEL: ${GEMINI_DECISION_MODEL:-gemini-decision-1}
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      CHAT_DATABASE_PATH: /data/chats.sqlite3
+    volumes:
+      - chats-data:/data
+    restart: unless-stopped
   frontend:
     build: ./frontend
     ports:

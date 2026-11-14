@@ -1,0 +1,20 @@
+services:
+  backend:
+    command: ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]
+    volumes:
+      - ./backend/app:/app/app:ro,z
+  worker:
+    command: ["/app/.venv/bin/watchfiles", "--filter", "python", "--sigint-timeout", "5", "/app/.venv/bin/python -m app.worker", "/app/app"]
+    volumes:
+      - ./backend/app:/app/app:ro,z
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+      DEV_AUTH_TOKEN: ${AGENT_API_TOKEN:-}
+    volumes:
+      - ./frontend/src:/app/src:ro,z
+      - ./frontend/index.html:/app/index.html:ro,z
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro,z

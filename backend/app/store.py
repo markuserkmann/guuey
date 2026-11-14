@@ -43,6 +43,11 @@ class ChatStore:
                     chat_id UNINDEXED, owner UNINDEXED, title, content
                 );
             """)
+            db.execute("BEGIN IMMEDIATE")
+            if "pinned" not in {row["name"] for row in db.execute("PRAGMA table_info(chats)")}:
+                db.execute("ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+            if "attachments" not in {row["name"] for row in db.execute("PRAGMA table_info(messages)")}:
+                db.execute("ALTER TABLE messages ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'")
 
     @contextmanager
     def connect(self):
@@ -62,7 +67,7 @@ class ChatStore:
     def create(self, owner: str) -> dict:
         identifier, timestamp = str(uuid4()), now()
         with self.connect() as db:
-            db.execute("INSERT INTO chats VALUES (?, ?, ?, ?, ?)",
+            db.execute("INSERT INTO chats(id, owner, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
                        (identifier, owner, "New chat", timestamp, timestamp))
             db.execute("INSERT INTO chat_search VALUES (?, ?, ?, '')",
                        (identifier, owner, "New chat"))
@@ -74,37 +79,45 @@ class ChatStore:
         with self.connect() as db:
             if fts_query:
                 rows = db.execute("""
-                    SELECT c.id, c.title, c.updated_at FROM chat_search s
+                    SELECT c.id, c.title, c.updated_at, c.pinned FROM chat_search s
                     JOIN chats c ON c.id=s.chat_id
                     WHERE chat_search MATCH ? AND s.owner=?
-                    ORDER BY c.updated_at DESC LIMIT 100
+                    ORDER BY c.pinned DESC, c.updated_at DESC LIMIT 100
                 """, (fts_query, owner)).fetchall()
             else:
                 rows = db.execute("""
-                    SELECT id, title, updated_at FROM chats WHERE owner=?
-                    ORDER BY updated_at DESC LIMIT 100
+                    SELECT id, title, updated_at, pinned FROM chats WHERE owner=?
+                    ORDER BY pinned DESC, updated_at DESC LIMIT 100
                 """, (owner,)).fetchall()
         return [dict(row) for row in rows]
 
     def detail(self, owner: str, chat_id: str) -> dict | None:
         with self.connect() as db:
-            chat = db.execute("SELECT id, title, updated_at FROM chats WHERE owner=? AND id=?",
+            chat = db.execute("SELECT id, title, updated_at, pinned FROM chats WHERE owner=? AND id=?",
                               (owner, chat_id)).fetchone()
             if chat is None:
                 return None
             messages = db.execute("""
-                SELECT id, role, content, sources, created_at FROM messages
+                SELECT id, role, content, sources, created_at, attachments FROM messages
                 WHERE chat_id=? ORDER BY rowid
             """, (chat_id,)).fetchall()
         return {**dict(chat), "messages": [
-            {**dict(row), "sources": json.loads(row["sources"])} for row in messages
+            {**dict(row), "sources": json.loads(row["sources"]), "attachments": json.loads(row["attachments"])} for row in messages
         ]}
 
+    def pin(self, owner: str, chat_id: str, pinned: bool) -> dict | None:
+        with self.connect() as db:
+            row = db.execute(
+                "UPDATE chats SET pinned=? WHERE owner=? AND id=? RETURNING id,title,updated_at,pinned",
+                (pinned, owner, chat_id),
+            ).fetchone()
+        return dict(row) if row else None
+
     def append_exchange(self, owner: str, chat_id: str, prompt: str, reply: str,
-                        sources: list[dict] | None = None) -> dict | None:
+                        sources: list[dict] | None = None, attachments: list[dict] | None = None) -> dict | None:
         timestamp = now()
         user_message = {"id": str(uuid4()), "role": "user", "content": prompt,
-                        "sources": [], "created_at": timestamp}
+                        "sources": [], "created_at": timestamp, "attachments": attachments or []}
         assistant_message = {"id": str(uuid4()), "role": "assistant", "content": reply,
                              "sources": sources or [], "created_at": timestamp}
         with self.connect() as db:
@@ -112,10 +125,10 @@ class ChatStore:
                               (owner, chat_id)).fetchone()
             if chat is None:
                 return None
-            db.executemany("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?)", [
-                (user_message["id"], chat_id, "user", prompt, "[]", timestamp),
+            db.executemany("INSERT INTO messages(id, chat_id, role, content, sources, created_at, attachments) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+                (user_message["id"], chat_id, "user", prompt, "[]", timestamp, json.dumps(attachments or [])),
                 (assistant_message["id"], chat_id, "assistant", reply,
-                 json.dumps(sources or [], separators=(",", ":")), timestamp),
+                 json.dumps(sources or [], separators=(",", ":")), timestamp, "[]"),
             ])
             title = prompt.replace("\n", " ").strip()[:80] if chat["title"] == "New chat" else chat["title"]
             db.execute("UPDATE chats SET title=?, updated_at=? WHERE id=?",

@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.attachments import Attachments
+
 
 class HealthResponse(BaseModel):
     status: str
@@ -15,6 +17,7 @@ class HealthResponse(BaseModel):
 class ChatTurn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1)
+    attachments: Attachments = Field(default_factory=list)
 
 
 class ChatSource(BaseModel):
@@ -26,6 +29,11 @@ class ChatSummary(BaseModel):
     id: str
     title: str
     updated_at: str
+    pinned: bool = False
+
+
+class UpdateChatRequest(BaseModel):
+    pinned: bool
 
 
 class StoredMessage(ChatTurn):
@@ -41,6 +49,7 @@ class ChatDetail(ChatSummary):
 class SendMessageRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
     search: bool = False
+    attachments: Attachments = Field(default_factory=list)
 
 
 class SendMessageResponse(BaseModel):
