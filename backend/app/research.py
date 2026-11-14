@@ -13,6 +13,7 @@ from uuid import uuid4
 import httpx
 from markdown_it import MarkdownIt
 from pydantic import HttpUrl, ValidationError
+from app.secrets import redact
 
 
 class SearchUnavailable(Exception):
@@ -59,11 +60,7 @@ def _request(endpoint: str, body: dict) -> dict:
                 details = {"result_count": len(payload["results"]), "observed_at": observed_at}
                 request_id = payload.get("requestId")
                 if isinstance(request_id, str):
-                    for name in ("EXA_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "AGENT_API_TOKEN"):
-                        secret = os.getenv(name)
-                        if secret:
-                            request_id = request_id.replace(secret, "[redacted]")
-                    details["request_id"] = request_id[:200]
+                    details["request_id"] = redact(request_id)[:200]
                 costs = _numeric_costs(payload.get("costDollars"))
                 if costs:
                     details["cost_dollars"] = costs

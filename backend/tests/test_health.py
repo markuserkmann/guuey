@@ -14,4 +14,6 @@ def test_health() -> None:
         "model": "local mock",
         "auth_configured": False,
         "exa_configured": False,
+        "browser_enabled": False,
+        "saved_logins_enabled": False,
     }

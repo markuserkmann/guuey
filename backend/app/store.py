@@ -55,6 +55,7 @@ class ChatStore:
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
         db.execute("PRAGMA journal_mode = WAL")
+        db.execute("PRAGMA secure_delete = ON")
         try:
             yield db
             db.commit()

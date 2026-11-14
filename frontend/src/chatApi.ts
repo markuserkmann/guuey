@@ -1,5 +1,6 @@
 import { DEV_SESSION, tokenError } from "./auth";
 import type { TextAttachment } from "./attachments";
+import type { BrowserState } from "./browserApi";
 
 export type ChatSource = { title: string; url: string };
 export type ChatMessage = {
@@ -42,19 +43,32 @@ export type Health = {
   model: string;
   auth_configured: boolean;
   exa_configured: boolean;
+  browser_enabled: boolean;
+  saved_logins_enabled: boolean;
 };
 
 export const verifySession = (token: string) =>
   request<{ authenticated: boolean }>("/api/session", token);
 
-async function request<T>(
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
+
+export async function apiFetch(
   path: string,
   token: string,
   init: RequestInit = {},
-): Promise<T> {
+  sensitive = false,
+): Promise<Response> {
   const validationError = token === DEV_SESSION ? null : tokenError(token);
   if (validationError) throw new Error(validationError);
   const response = await fetch(path, {
+    cache: "no-store",
     ...init,
     headers: {
       ...(init.body ? { "Content-Type": "application/json" } : {}),
@@ -63,16 +77,46 @@ async function request<T>(
     },
   });
   if (!response.ok) {
+    if (sensitive) {
+      const messages: Record<number, string> = {
+        401: "Your connection is no longer authorized. Reconnect to continue.",
+        404: "This browser request or saved login is no longer available.",
+        409: "The browser state changed. Refresh before trying again. A login in use cannot be replaced.",
+        422: "Check the site URL and cookie format. The server could not accept this input.",
+        503: "Saved logins and private input are unavailable. Check the backend session-key configuration.",
+      };
+      throw new ApiError(
+        messages[response.status] ||
+          "The browser request failed. Try again after checking its status.",
+        response.status,
+      );
+    }
     const body = (await response.json().catch(() => null)) as {
-      detail?: string | { msg: string }[];
+      detail?: unknown;
     } | null;
     const detail =
       typeof body?.detail === "string"
         ? body.detail
-        : body?.detail?.map((item) => item.msg).join("; ");
-    throw new Error(detail || `Request failed (${response.status}).`);
+        : Array.isArray(body?.detail)
+          ? body.detail.map((item) => item.msg).join("; ")
+          : "";
+    throw new ApiError(
+      detail || `Request failed (${response.status}).`,
+      response.status,
+    );
   }
-  return response.json() as Promise<T>;
+  return response;
+}
+
+async function request<T>(
+  path: string,
+  token: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const response = await apiFetch(path, token, init);
+  return response.status === 204
+    ? (undefined as T)
+    : (response.json() as Promise<T>);
 }
 
 export async function getHealth(): Promise<Health> {
@@ -122,11 +166,12 @@ export type ResearchRun = {
   status:
     "queued" | "running" | "completed" | "partial" | "failed" | "cancelled";
   phase: string;
+  browser?: BrowserState | null;
   live_output?: { kind: "answer" | "draft" | "progress"; text: string } | null;
   result: { reply: string; sources: ChatSource[] } | null;
   debug: {
     stages?: ModelTrace[];
-    decision?: { deep_recommended: boolean };
+    decision?: { deep_recommended: boolean; workflow?: string };
     error_type?: string;
     error?: {
       code: string;
@@ -155,8 +200,13 @@ export const startRun = (
 ) =>
   request<ResearchRun>(`/api/chats/${encodeURIComponent(chatId)}/runs`, token, {
     method: "POST",
-    body: JSON.stringify({ message, mode, request_id: requestId, attachments,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+    body: JSON.stringify({
+      message,
+      mode,
+      request_id: requestId,
+      attachments,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }),
   });
 export const getRun = (token: string, id: string) =>
   request<ResearchRun>(`/api/runs/${encodeURIComponent(id)}`, token);
@@ -198,6 +248,12 @@ export function runProgress(run: ResearchRun | null): string {
     answering: "Writing…",
     verifying: "Checking the evidence…",
     answer_ready: "Answer ready. Checking remaining gaps…",
+    browser_starting: "Opening the browser…",
+    browser_working: "Working in the browser…",
+    awaiting_input: "Waiting for your answer",
+    awaiting_approval: "Waiting for your approval",
+    awaiting_takeover: "Your turn in the live view",
+    browser_verifying: "Checking the result…",
   };
   return (
     (run && labels[run.phase]) || run?.phase.replaceAll("_", " ") || "Starting…"

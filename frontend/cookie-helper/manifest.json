@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Guuey cookie helper",
+  "version": "1.0.0",
+  "description": "Export cookies from the current website for a Guuey saved login.",
+  "permissions": ["activeTab", "cookies", "clipboardWrite"],
+  "optional_host_permissions": ["https://*/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Export login cookies"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'none'"
+  }
+}

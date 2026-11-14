@@ -4,6 +4,7 @@ from uuid import uuid4
 from pydantic_core import to_jsonable_python
 
 from app.store import ChatStore, now
+from app.browser.store import BrowserStore, SCHEMA, extend_schema
 
 
 class RunStore(ChatStore):
@@ -20,6 +21,7 @@ class RunStore(ChatStore):
                 );
                 CREATE INDEX IF NOT EXISTS runs_chat ON runs(owner, chat_id, created_at);
             ''')
+            db.executescript(SCHEMA)
             db.execute('BEGIN IMMEDIATE')
             if 'attachments' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
                 db.execute("ALTER TABLE runs ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'")
@@ -27,11 +29,19 @@ class RunStore(ChatStore):
                 db.execute("ALTER TABLE runs ADD COLUMN live_output TEXT")
             if 'timezone' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
                 db.execute("ALTER TABLE runs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+            if 'deadline_at' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
+                db.execute('ALTER TABLE runs ADD COLUMN deadline_at REAL')
+            if 'browser_view' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
+                db.execute('ALTER TABLE runs ADD COLUMN browser_view TEXT')
+            extend_schema(db)
 
     def get(self, owner, run_id):
         with self.connect() as db:
             row = db.execute('SELECT * FROM runs WHERE owner=? AND id=?', (owner, run_id)).fetchone()
-        return self.decode(row) if row else None
+        return {**self.decode(row), 'browser': self.browser_state(owner, run_id)} if row else None
+
+    def browser_state(self, owner, run_id):
+        return BrowserStore(self).state(owner, run_id)
 
     @staticmethod
     def decode(row):
@@ -41,6 +51,7 @@ class RunStore(ChatStore):
         data['attachments'] = json.loads(data['attachments'])
         data['live_output'] = json.loads(data['live_output']) if data.get('live_output') else None
         data.pop('owner', None)
+        data.pop('browser_view', None)
         return data
 
     def create(self, owner, chat_id, request_id, message, mode, parent_id=None, attachments=None, timezone='UTC'):
@@ -65,6 +76,9 @@ class RunStore(ChatStore):
                 parent = db.execute('SELECT * FROM runs WHERE id=? AND owner=? AND chat_id=?', (parent_id, owner, chat_id)).fetchone()
                 if not parent or parent['status'] != 'partial' or parent['mode'] == 'deep':
                     raise ValueError('This run cannot be continued')
+                if (parent['deadline_at'] is not None or parent['phase'].startswith('browser_')
+                        or json.loads(parent['debug']).get('decision', {}).get('workflow') == 'browser'):
+                    raise ValueError('Browser runs cannot be continued with Deep')
                 if db.execute('SELECT id FROM runs WHERE chat_id=? AND rowid > (SELECT rowid FROM runs WHERE id=?) LIMIT 1',
                               (chat_id, parent_id)).fetchone():
                     raise ValueError('A newer turn exists; continue the current task instead')
@@ -104,6 +118,7 @@ class RunStore(ChatStore):
             state[key] = json.loads(state[key]) if state[key] else None
         if state['result']:
             state['result']['sources'] = [{"title": source['title'], "url": source['url']} for source in state['result'].get('sources', [])]
+        state['browser'] = self.browser_state(owner, run_id)
         return state
 
     def finish(self, run_id, status, phase):
@@ -112,7 +127,23 @@ class RunStore(ChatStore):
             row = db.execute('SELECT * FROM runs WHERE id=?', (run_id,)).fetchone()
             if not row or row['status'] not in ('running', 'queued'):
                 return
+            db.execute('DELETE FROM browser_session_leases WHERE owner=? AND run_id=?', (row['owner'], run_id))
+            uncertain = db.execute("SELECT summary FROM browser_actions WHERE owner=? AND run_id=? AND status IN ('submitted','unverified')",
+                                   (row['owner'], run_id)).fetchall()
+            db.execute("UPDATE browser_requests SET status='expired',secret_values=NULL WHERE owner=? AND run_id=? AND status IN ('pending','answered')",
+                       (row['owner'], run_id))
+            action_status = 'declined' if status == 'cancelled' else 'expired'
+            db.execute("UPDATE browser_actions SET status=?,updated_at=? WHERE owner=? AND run_id=? AND status IN ('attempting','approved')",
+                       (action_status, now(), row['owner'], run_id))
+            db.execute("UPDATE browser_actions SET status='unverified',updated_at=? WHERE owner=? AND run_id=? AND status='submitted'",
+                       (now(), row['owner'], run_id))
             result = json.loads(row['result']) if row['result'] else None
+            if uncertain:
+                result = {'reply': 'A browser submission was attempted but its result is uncertain. Check your account before trying again.',
+                          'sources': [], 'browser': {'outcome': 'failed', 'actions': [dict(action) for action in db.execute(
+                              'SELECT id,summary,status FROM browser_actions WHERE owner=? AND run_id=?', (row['owner'], run_id))]}}
+                if status != 'cancelled':
+                    status, phase = 'partial', 'submission_unknown'
             live = json.loads(row['live_output']) if row['live_output'] else None
             if not result and live and live.get('kind') == 'answer' and live.get('text'):
                 result = {'reply': live['text'], 'sources': []}
@@ -128,10 +159,10 @@ class RunStore(ChatStore):
                 db.execute("UPDATE chats SET title=CASE WHEN title='New chat' THEN ? ELSE title END, updated_at=? WHERE id=?", (row['message'][:80], timestamp, row['chat_id']))
                 db.execute('DELETE FROM chat_search WHERE chat_id=?', (row['chat_id'],))
                 db.execute("INSERT INTO chat_search SELECT c.id,c.owner,c.title,COALESCE((SELECT group_concat(content, ' ') FROM messages WHERE chat_id=c.id),'') FROM chats c WHERE c.id=?", (row['chat_id'],))
-            db.execute('UPDATE runs SET status=?,phase=?,updated_at=?,live_output=NULL,result=? WHERE id=?',
+            db.execute('UPDATE runs SET status=?,phase=?,updated_at=?,live_output=NULL,browser_view=NULL,result=? WHERE id=?',
                        (status, phase, now(), json.dumps(result) if result else None, run_id))
 
     def latest(self, owner, chat_id):
         with self.connect() as db:
             row = db.execute('SELECT * FROM runs WHERE owner=? AND chat_id=? ORDER BY created_at DESC LIMIT 1', (owner, chat_id)).fetchone()
-        return self.decode(row) if row else None
+        return {**self.decode(row), 'browser': self.browser_state(owner, row['id'])} if row else None

@@ -14,6 +14,10 @@ import { ChatSidebar } from "./components/ChatSidebar";
 import { EmptyState } from "./components/EmptyState";
 import { Composer } from "./components/Composer";
 import { Icon } from "./components/Icon";
+import { BrowserActivity } from "./components/BrowserActivity";
+import { BrowserRequestCard } from "./components/BrowserRequestCard";
+import { SavedLogins } from "./components/SavedLogins";
+import { isBrowserRun } from "./browserApi";
 import { streamRun } from "./runStream";
 import type { TextAttachment } from "./attachments";
 import {
@@ -85,6 +89,7 @@ export function App() {
   const [error, setError] = useState("");
   const [traces, setTraces] = useState<Record<string, ModelTrace[]>>({});
   const [debugOpen, setDebugOpen] = useState(false);
+  const [loginsOpen, setLoginsOpen] = useState(false);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("guuey-sidebar-collapsed") === "true",
@@ -98,6 +103,7 @@ export function App() {
   }
 
   useEffect(() => {
+    if (loginsOpen) return;
     if (!mobileHistoryOpen && !debugOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -107,7 +113,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mobileHistoryOpen, debugOpen]);
+  }, [mobileHistoryOpen, debugOpen, loginsOpen]);
 
   useEffect(() => {
     if (!token) return;
@@ -124,8 +130,13 @@ export function App() {
         if (!current) return;
         setChats(items);
         setHealth(status);
-        const requestedId = new URL(window.location.href).searchParams.get("chat");
-        const selected = items.find((item) => item.id === requestedId) ?? items[0] ?? (await createChat(token));
+        const requestedId = new URL(window.location.href).searchParams.get(
+          "chat",
+        );
+        const selected =
+          items.find((item) => item.id === requestedId) ??
+          items[0] ??
+          (await createChat(token));
         if (!current) return;
         if (items.length === 0) setChats([selected]);
         const chat = await loadChat(token, selected.id);
@@ -443,24 +454,29 @@ export function App() {
 
   async function runAction(action: "continue" | "cancel") {
     if (!run) return;
+    const generation = runGeneration.current;
     setError("");
     try {
       const value = await (action === "continue"
         ? continueRun(token, run.id)
         : cancelRun(token, run.id));
+      if (generation !== runGeneration.current) return;
       setRun(value);
       setBusy(value.status === "queued" || value.status === "running");
     } catch (cause) {
+      if (generation !== runGeneration.current) return;
       setError(cause instanceof Error ? cause.message : "Run action failed.");
     }
   }
 
   function disconnect() {
     ++loadSequence.current;
+    ++runGeneration.current;
     setAttachments([]);
     setDraft("");
     setDebugOpen(false);
     setError("");
+    setLoginsOpen(false);
     setRun(null);
     setTraces({});
     setToken("");
@@ -541,6 +557,14 @@ export function App() {
               Chats
             </button>
             <button
+              className="quiet-button"
+              type="button"
+              aria-haspopup="dialog"
+              onClick={() => setLoginsOpen(true)}
+            >
+              Saved logins
+            </button>
+            <button
               ref={debugTrigger}
               className="quiet-button debug-toggle"
               type="button"
@@ -580,6 +604,28 @@ export function App() {
             ) : visibleMessages.length === 0 ? (
               <EmptyState />
             ) : null}
+            {run?.chat_id === activeId && run.browser && (
+              <BrowserActivity
+                state={run.browser}
+                onReview={() => setLoginsOpen(true)}
+              />
+            )}
+            {run?.chat_id === activeId &&
+              run.status === "running" &&
+              run.browser?.request && (
+                <BrowserRequestCard
+                  key={`${run.id}:${run.browser.request.id}`}
+                  token={token}
+                  request={run.browser.request}
+                  liveView={run.browser.live_view_url}
+                  onRun={(value) =>
+                    setRun((current) =>
+                      current?.id === value.id ? value : current,
+                    )
+                  }
+                  onCancel={() => runAction("cancel")}
+                />
+              )}
             {busy && (
               <div className="waiting">
                 <p role="status">
@@ -605,7 +651,7 @@ export function App() {
               run?.chat_id === activeId &&
               run.status === "partial" &&
               run.mode !== "deep" &&
-              run.phase !== "browser_unavailable" && (
+              !isBrowserRun(run) && (
                 <div className="waiting">
                   <p>Some requirements may need more research.</p>
                   <button
@@ -617,24 +663,27 @@ export function App() {
                   </button>
                 </div>
               )}
-            {!busy && run?.chat_id === activeId && run.status === "failed" && (
-              <button
-                className="quiet-button"
-                type="button"
-                onClick={() =>
-                  void sendSubmission({
-                    requestId: crypto.randomUUID(),
-                    chatId: activeId,
-                    content: run.message,
-                    attachments: run.attachments ?? [],
-                    mode: run.mode,
-                    failed: false,
-                  })
-                }
-              >
-                Try again
-              </button>
-            )}
+            {!busy &&
+              run?.chat_id === activeId &&
+              run.status === "failed" &&
+              !isBrowserRun(run) && (
+                <button
+                  className="quiet-button"
+                  type="button"
+                  onClick={() =>
+                    void sendSubmission({
+                      requestId: crypto.randomUUID(),
+                      chatId: activeId,
+                      content: run.message,
+                      attachments: run.attachments ?? [],
+                      mode: run.mode,
+                      failed: false,
+                    })
+                  }
+                >
+                  Try again
+                </button>
+              )}
             {error && (
               <p className="error-message" role="alert">
                 {error}
@@ -676,6 +725,23 @@ export function App() {
           chatId={activeId}
           traces={traces[activeId] ?? []}
           onClose={closeDebug}
+        />
+      )}
+      {loginsOpen && (
+        <SavedLogins
+          token={token}
+          enabled={!!health?.saved_logins_enabled}
+          onClose={() => setLoginsOpen(false)}
+          onChanged={() => {
+            if (run)
+              void getRun(token, run.id)
+                .then((value) =>
+                  setRun((current) =>
+                    current?.id === value.id ? value : current,
+                  ),
+                )
+                .catch(() => undefined);
+          }}
         />
       )}
     </div>

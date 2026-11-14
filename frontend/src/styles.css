@@ -538,6 +538,314 @@ a {
   font-size: 14px;
   color: var(--muted);
 }
+
+.browser-activity,
+.browser-request {
+  min-width: 0;
+  margin: 20px 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.browser-activity {
+  border-block: 1px solid var(--line);
+  padding: 12px 0;
+}
+.browser-activity-heading,
+.saved-login-row,
+.saved-logins-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.browser-activity-heading {
+  flex-wrap: wrap;
+  align-items: start;
+}
+.browser-activity-heading details {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.browser-preview {
+  margin: 8px 0 12px;
+}
+.browser-preview iframe {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  min-height: 200px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.browser-preview figcaption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.browser-activity summary,
+.cookie-helper-info summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding-block: 10px;
+}
+.browser-activity summary:hover,
+.cookie-helper-info summary:hover {
+  color: white;
+}
+.browser-activity summary span,
+.browser-steps small {
+  display: block;
+  color: var(--quiet);
+  font-size: 12px;
+}
+.browser-steps {
+  padding: 0;
+  margin: 8px 0;
+  list-style: none;
+}
+.browser-steps li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.browser-step-status {
+  color: var(--muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.browser-action-result {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 8px;
+}
+.browser-action-result p {
+  margin: 4px 0;
+}
+.browser-request {
+  padding: 20px;
+  border: 1px solid #646464;
+  border-radius: 12px;
+  background: var(--surface);
+}
+.browser-request h2 {
+  margin: 4px 0 16px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.browser-site {
+  color: var(--muted);
+  margin: 0;
+}
+.browser-request-summary {
+  white-space: pre-wrap;
+}
+.browser-note,
+.browser-expiry {
+  color: var(--muted);
+  font-size: 13px;
+}
+.browser-expiry {
+  margin: 16px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.browser-warning {
+  color: #f0ce8e;
+}
+.browser-buttons {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+.browser-primary,
+.browser-danger {
+  min-height: 44px;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--text);
+  color: var(--canvas);
+}
+.browser-primary:hover:not(:disabled) {
+  background: #d0d0d0;
+}
+.browser-danger {
+  background: #ffd0ce;
+  color: #31100e;
+}
+.browser-danger:hover:not(:disabled) {
+  background: #ffb8b4;
+}
+.browser-buttons button:active:not(:disabled),
+.saved-logins-dialog button:active:not(:disabled) {
+  filter: brightness(0.88);
+}
+.browser-fields {
+  display: grid;
+  gap: 16px;
+  border: 0;
+  padding: 0;
+  margin: 16px 0;
+  min-width: 0;
+}
+.browser-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.browser-fields input,
+.browser-fields select,
+.browser-fields textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #646464;
+  border-radius: 6px;
+  background: var(--canvas);
+  font-size: 16px;
+}
+.browser-fields textarea {
+  resize: vertical;
+}
+.browser-fields :disabled {
+  opacity: 0.6;
+}
+.browser-screenshot {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  background: var(--canvas);
+  border-radius: 6px;
+  margin-block: 16px;
+  text-align: center;
+}
+.browser-screenshot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+  object-fit: contain;
+}
+.saved-logins-dialog {
+  width: min(600px, calc(100% - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid #646464;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.saved-logins-dialog::backdrop {
+  background: #000a;
+}
+.saved-logins-header {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  z-index: 1;
+}
+.saved-logins-header h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.saved-logins-body {
+  padding: 8px 24px 24px;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.saved-logins-body h3 {
+  font-size: 16px;
+  margin: 0 0 16px;
+}
+.saved-login-list {
+  padding: 0;
+  list-style: none;
+}
+.saved-login-list > li {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.saved-login-row > div {
+  min-width: 0;
+}
+.saved-login-row button {
+  flex-shrink: 0;
+}
+.saved-login-row p {
+  margin: 4px 0;
+}
+.saved-login-row small {
+  color: var(--quiet);
+}
+.saved-login-import,
+.uncertain-actions {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.uncertain-action + .uncertain-action {
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+}
+.cookie-helper-info {
+  margin-top: 12px;
+}
+.browser-notice {
+  padding: 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--raised);
+}
+.browser-request .quiet-button,
+.browser-activity .quiet-button,
+.saved-logins-dialog .quiet-button,
+.header-actions .quiet-button {
+  min-height: 44px;
+}
+@media (max-width: 480px) {
+  .chat-header {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+  .header-actions {
+    gap: 0;
+  }
+  .header-actions .quiet-button {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+  .header-actions .debug-toggle svg {
+    display: none;
+  }
+  .browser-request {
+    padding: 16px;
+  }
+  .browser-buttons {
+    align-items: stretch;
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  .saved-logins-dialog {
+    width: calc(100% - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .saved-logins-body {
+    padding-inline: 16px;
+  }
+}
 .waiting p {
   margin: 0;
 }

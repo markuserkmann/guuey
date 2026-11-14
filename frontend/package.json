@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "format": "prettier --check src vite.config.ts index.html"
+    "format": "prettier --check src cookie-helper scripts tests vite.config.ts index.html",
+    "package:cookie-helper": "node scripts/package-cookie-helper.mjs",
+    "prebuild": "npm run package:cookie-helper",
+    "predev": "npm run package:cookie-helper",
+    "test": "node --test --experimental-test-isolation=none --test-concurrency=1 tests/*.test.mjs"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.36",
@@ -21,6 +25,8 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",
+    "esbuild": "^0.28.2",
+    "fflate": "^0.8.3",
     "prettier": "^3.9.10",
     "typescript": "^5.9.3",
     "vite": "^7.3.0"

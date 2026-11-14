@@ -3,7 +3,7 @@ import type { ResearchRun } from "./chatApi";
 
 export type RunSnapshot = Pick<
   ResearchRun,
-  "id" | "status" | "phase" | "result" | "live_output"
+  "id" | "status" | "phase" | "result" | "live_output" | "browser"
 >;
 
 export async function streamRun(

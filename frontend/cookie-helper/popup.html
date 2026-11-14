@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Guuey cookie helper</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Export login cookies</h1>
+      <p>
+        Open the website you’re signed in to, then export its cookies for Guuey.
+      </p>
+      <button id="export" type="button">Export cookies for this site</button>
+      <p id="status" role="status" aria-live="polite"></p>
+      <p class="note">
+        Cookies go to your clipboard. Paste them in Saved logins, then replace
+        the clipboard contents. This helper sends no network requests.
+      </p>
+    </main>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

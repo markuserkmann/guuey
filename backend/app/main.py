@@ -2,7 +2,9 @@ import os
 from functools import lru_cache
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 
 from app.auth import require_api_key, valid_api_token
 from app.attachments import Attachments, attachment_context
@@ -20,9 +22,22 @@ from app.schemas import (
 )
 from app.store import ChatStore
 from app.streaming import stream_run
+from app.browser.config import BrowserSettings, BrowserUnavailable
+from app.browser.cookies import parse_cookies
+from app.browser.guard import site_of
+from app.browser.schemas import ActionResolution, BrowserResponse, CookieImportRequest
+from app.browser.store import BrowserStore, SessionConflict
 
 app = FastAPI(title="Guuey API")
 Owner = Depends(require_api_key)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    if request.url.path.startswith('/api/browser/') or '/browser/requests/' in request.url.path:
+        # Validation errors must not echo pasted cookies or private input values.
+        return JSONResponse(status_code=422, content={'detail': 'Invalid browser request body'})
+    return await request_validation_exception_handler(request, exc)
 
 
 @lru_cache(maxsize=1)
@@ -33,12 +48,15 @@ def get_store() -> ChatStore:
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     configured = api_key() is not None
+    browser = BrowserSettings.from_env()
     return HealthResponse(
         status="ok",
         mode="gemini" if configured else "mock",
         model=model_name() if configured else "local mock",
         auth_configured=valid_api_token(os.getenv("AGENT_API_TOKEN", "")),
         exa_configured=bool(os.getenv("EXA_API_KEY")),
+        browser_enabled=browser.enabled,
+        saved_logins_enabled=browser.saved_logins_enabled,
     )
 
 
@@ -175,3 +193,76 @@ def continue_run(run_id: str, owner: str = Owner):
                                 attachments=run["attachments"], timezone=run['timezone'])
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+def browser_store():
+    return BrowserStore(get_runs())
+
+
+@app.post('/api/runs/{run_id}/browser/requests/{request_id}')
+def answer_browser_request(run_id: str, request_id: str, body: BrowserResponse, owner: str = Owner):
+    try:
+        return browser_store().answer_request(owner, run_id, request_id, body.model_dump(exclude_none=True))
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from None
+    except BrowserUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
+    except ValueError:
+        raise HTTPException(409, 'Browser request is no longer pending or the response does not match') from None
+
+
+@app.get('/api/runs/{run_id}/browser/requests/{request_id}/screenshot')
+def browser_screenshot(run_id: str, request_id: str, owner: str = Owner):
+    try:
+        content = browser_store().screenshot(owner, run_id, request_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from None
+    return Response(content, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/browser/sessions')
+def list_browser_sessions(owner: str = Owner):
+    return browser_store().list_sessions(owner)
+
+
+@app.get('/api/browser/actions')
+def unresolved_browser_actions(owner: str = Owner):
+    return browser_store().unresolved_actions(owner)
+
+
+@app.post('/api/browser/actions/{action_id}/resolve', status_code=204)
+def resolve_browser_action(action_id: str, body: ActionResolution, owner: str = Owner):
+    try:
+        browser_store().resolve_action(owner, action_id, body.decision, body.evidence)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
+    return Response(status_code=204)
+
+
+@app.post('/api/browser/sessions/import')
+def import_browser_session(body: CookieImportRequest, owner: str = Owner):
+    store = browser_store()
+    try:
+        store.settings.encryption_key()
+        imported = parse_cookies(body.cookies, body.site_url)
+        if not imported.cookies:
+            raise HTTPException(422, {'message': 'No valid cookies to import', 'rejected': imported.rejected})
+        session = store.save_session(owner, site_of(body.site_url), {'cookies': imported.cookies, 'origins': []}, 'unverified')
+    except SessionConflict as exc:
+        raise HTTPException(409, str(exc)) from None
+    except BrowserUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return {**session, 'accepted': len(imported.cookies), 'rejected': imported.rejected}
+
+
+@app.delete('/api/browser/sessions/{session_id}', status_code=204)
+def delete_browser_session(session_id: str, owner: str = Owner):
+    try:
+        browser_store().delete_session(owner, session_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from None
+    return Response(status_code=204)

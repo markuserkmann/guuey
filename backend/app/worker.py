@@ -24,6 +24,8 @@ from app.task_context import dated_request
 from app.enquiries import prepare_enquiry, render_enquiry
 from app.research import SearchUnavailable
 from app.research_modes import RESEARCH_LIMITS, research_mode, research_deadline, ResearchDeadline, remaining_seconds
+from app.browser.config import BrowserSettings
+from app.browser.run import execute_browser
 
 
 def execute(run_id):
@@ -41,7 +43,8 @@ def execute(run_id):
             event = {**event, 'round': debug.get('round', 0), 'run_elapsed_s': round(time.monotonic() - run_started, 3)}
             debug.setdefault('model_events', []).append(event)
             debug['operation'] = event
-            phase = 'waiting_for_provider' if event['status'] == 'retrying' else 'retrieval' if event['stage'] == 'retrieval_request' else event['stage']
+            phase = ('browser_working' if event['stage'] == 'browser' else 'waiting_for_provider' if event['status'] == 'retrying'
+                     else 'retrieval' if event['stage'] == 'retrieval_request' else event['stage'])
             store.checkpoint(run_id, phase, debug)
 
     observer = model_call_events.set(record_call)
@@ -83,7 +86,7 @@ def execute(run_id):
             debug['router'] = 'fallback'
             if api_key():
                 agent = Agent(GoogleModel(model_name(), provider=google_provider(api_key())), output_type=RouteDecision,
-                              instructions='Classify as chat, research, browser (interactive actions), or clarification. Research requires external evidence. Preparing a booking request or appointment enquiry for review is research, not browser execution. Recommend deep for multiple items or complex constraints. Do not perform the task.')
+                              instructions='Classify as chat, research, browser, or clarification. Browser covers signing in to websites, filling and submitting forms, and ordering, booking or buying on the user\'s behalf. Research requires external evidence. Preparing a booking request or appointment enquiry for review is research. Recommend deep for multiple items or complex constraints. Do not perform the task.')
                 try:
                     response = call_model(agent, context + '\nCurrent request: ' + message, stage='routing', model_settings={'max_tokens': 256})
                     decision = response.output
@@ -98,6 +101,9 @@ def execute(run_id):
         debug['decision'] = decision.model_dump()
         store.checkpoint(run_id, 'planning', debug)
         if decision.workflow == 'browser':
+            if BrowserSettings.from_env().enabled:
+                execute_browser(run_id, row, message, context, debug, store)
+                return
             store.checkpoint(run_id, 'unsupported', debug, {'reply': 'This request needs browser interaction, which is not available yet.', 'sources': []})
             store.finish(run_id, 'partial', 'browser_unavailable')
             return
@@ -244,18 +250,25 @@ def supervise():
     for run_id in interrupted:
         store.finish(run_id, 'partial', 'worker_interrupted')
     active = {}
+    stopping = {}
     try:
         while True:
             for run_id, (process, started, budget, owner) in list(active.items()):
                 run = store.get(owner, run_id)
-                expired = time.monotonic() - started >= budget
+                expired = (time.time() >= run['deadline_at'] if run['deadline_at'] is not None
+                           else time.monotonic() - started >= budget)
                 if expired or run['status'] == 'cancelled':
-                    process.kill()
-                    process.wait()
-                    store.finish(run_id, 'partial' if run['result'] else 'failed', 'budget_exhausted')
+                    if run['deadline_at'] is not None:
+                        stopping.setdefault(run_id, time.monotonic())
+                        store.finish(run_id, 'partial' if run['result'] else 'failed', 'budget_exhausted')
+                    if run['deadline_at'] is None or time.monotonic() - stopping[run_id] >= 12:
+                        process.kill()
+                        process.wait()
+                        store.finish(run_id, 'partial' if run['result'] else 'failed', 'budget_exhausted')
                 if process.poll() is not None:
                     store.finish(run_id, 'failed', 'worker_exit')
                     del active[run_id]
+                    stopping.pop(run_id, None)
             if len(active) < 2:
                 row = store.claim()
                 if row:

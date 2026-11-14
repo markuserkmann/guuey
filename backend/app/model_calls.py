@@ -1,6 +1,5 @@
 import json
 import math
-import os
 import random
 import time
 from dataclasses import asdict
@@ -22,6 +21,7 @@ from pydantic_ai.exceptions import (
     ModelUnavailableError,
 )
 from pydantic_ai.providers.google import GoogleProvider
+from app.secrets import redact
 
 model_call_events: ContextVar[Callable[[dict], None] | None] = ContextVar("model_call_events", default=None)
 model_output_events: ContextVar[Callable[[dict], None] | None] = ContextVar("model_output_events", default=None)
@@ -59,10 +59,7 @@ def error_details(exc: Exception) -> dict:
         code, message = "temporarily_unavailable", "Gemini is temporarily unavailable. Please try again shortly."
     else:
         code, message = "provider_error", "The provider could not complete this request. See Debug for the error details."
-    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "EXA_API_KEY", "AGENT_API_TOKEN"):
-        secret = os.getenv(name)
-        if secret:
-            raw, body = raw.replace(secret, "[redacted]"), body.replace(secret, "[redacted]")
+    raw, body = redact(raw), redact(body)
     return {
         "code": code, "message": message, "type": type(exc).__name__,
         "provider": "gemini" if isinstance(exc, ModelAPIError) else None,

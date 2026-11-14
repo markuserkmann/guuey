@@ -2,6 +2,7 @@
 services:
   backend:
     environment:
+      BROWSER_ENABLED: 'false'
       EXA_USAGE_DATABASE: /data/butler-pass-20261114.sqlite3
       EXA_REQUEST_LIMIT: '280'
       GEMINI_PLANNING_MODEL: gemini-3.5-flash
@@ -9,6 +10,7 @@ services:
       GEMINI_VERIFICATION_MODEL: gemini-3.5-flash
   worker:
     environment:
+      BROWSER_ENABLED: 'false'
       EXA_USAGE_DATABASE: /data/butler-pass-20261114.sqlite3
       EXA_REQUEST_LIMIT: '280'
       GEMINI_PLANNING_MODEL: gemini-3.5-flash

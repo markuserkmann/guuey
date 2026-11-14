@@ -12,6 +12,8 @@ class HealthResponse(BaseModel):
     model: str
     auth_configured: bool
     exa_configured: bool
+    browser_enabled: bool = False
+    saved_logins_enabled: bool = False
 
 
 class ChatTurn(BaseModel):
