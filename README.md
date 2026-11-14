@@ -1,12 +1,12 @@
 # Guuey
 
-A standalone React chat UI backed by FastAPI, Pydantic, and Pydantic AI. Chat uses Gemini when configured and a deterministic local reply when no Gemini key is set.
+A standalone React chat UI backed by FastAPI, Pydantic, and Pydantic AI. Chats are stored in SQLite, searchable by title and message, and scoped to the configured bearer token. Chat uses Gemini when configured and a deterministic local reply otherwise.
 
 ## Configuration
 
-Copy `.env.example` to `.env`, set a unique `AGENT_API_TOKEN` with at least 32 characters, and optionally set `GEMINI_API_KEY`. The Gemini key stays on the server. `GOOGLE_API_KEY` is also accepted. `GEMINI_MODEL` selects the model and defaults to `gemini-3.5-flash-lite`.
+Copy `.env.example` to `.env`, set a unique `AGENT_API_TOKEN` with at least 32 characters, set `GEMINI_API_KEY`, and set `EXA_API_KEY` to enable web search. Both provider keys stay on the server. `GOOGLE_API_KEY` is also accepted for Gemini. `GEMINI_MODEL` selects the model and defaults to `gemini-3.5-flash-lite`.
 
-The browser asks for the backend token at connect time. It is held in tab memory only and is cleared on reload or disconnect.
+The browser asks for the backend token at connect time. It is held in tab memory only and is cleared on reload or disconnect. Chat history persists in a Docker volume; search filters saved titles and messages. Checking **Search with Exa** runs one bounded web search before Gemini writes a source-linked answer.
 
 ## Run with Docker
 

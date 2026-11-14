@@ -13,4 +13,5 @@ def test_health() -> None:
         "version": "0.1.0",
         "model": "local mock",
         "auth_configured": False,
+        "exa_configured": False,
     }

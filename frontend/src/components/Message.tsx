@@ -10,6 +10,14 @@ export function Message({ message }: { message: ChatMessage }) {
           <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
         ) : message.content}
       </div>
+      {message.role === "assistant" && message.sources?.length ? (
+        <details className="message-sources">
+          <summary>Sources ({message.sources.length})</summary>
+          <ul>{message.sources.map((source) => (
+            <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a></li>
+          ))}</ul>
+        </details>
+      ) : null}
     </article>
   );
 }
