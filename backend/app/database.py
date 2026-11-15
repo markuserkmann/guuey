@@ -4,6 +4,7 @@ import os
 import re
 import sqlite3
 import time
+from threading import BoundedSemaphore
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from sqlparams import SQLParams
 INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg.IntegrityError)
 PARAMETERS = SQLParams("qmark", "format", expand_tuples=False)
 WRITE_LOCK = 1829860713
+POSTGRES_CONNECTION_SLOTS = BoundedSemaphore(3)
 
 
 def database_target(filename=None):
@@ -97,6 +99,17 @@ class Connection:
 
 @contextmanager
 def connect(target):
+    if target.startswith(("postgres://", "postgresql://")):
+        with POSTGRES_CONNECTION_SLOTS:
+            with _connect(target) as db:
+                yield db
+    else:
+        with _connect(target) as db:
+            yield db
+
+
+@contextmanager
+def _connect(target):
     postgres = target.startswith(("postgres://", "postgresql://"))
     if postgres:
         options = {"connect_timeout": 10, "application_name": "guuey"}
