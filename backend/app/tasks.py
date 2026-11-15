@@ -105,7 +105,7 @@ class TaskStore:
         timestamp = now()
         next_run = (datetime.fromisoformat(timestamp) + timedelta(minutes=body.interval_minutes)).isoformat()
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             if body.telegram_enabled:
                 settings = TelegramSettings.from_env()
                 if not settings.configured or not db.execute(
@@ -151,7 +151,7 @@ class TaskStore:
 
     def set_enabled(self, owner, task_id, enabled):
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             row = db.execute("SELECT * FROM recurring_tasks WHERE owner=? AND id=?", (owner, task_id)).fetchone()
             if not row:
                 raise LookupError("Task not found")
@@ -164,7 +164,7 @@ class TaskStore:
 
     def delete(self, owner, task_id):
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             if not db.execute("SELECT 1 FROM recurring_tasks WHERE owner=? AND id=?", (owner, task_id)).fetchone():
                 raise LookupError("Task not found")
             if self.active(db, task_id):
@@ -175,7 +175,7 @@ class TaskStore:
         timestamp = timestamp or now()
         queued = []
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             rows = db.execute("SELECT * FROM recurring_tasks WHERE enabled=1 AND next_run_at<=? ORDER BY next_run_at LIMIT 20",
                               (timestamp,)).fetchall()
             for row in rows:
@@ -192,7 +192,7 @@ class TaskStore:
 
     def run_now(self, owner, task_id):
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             row = db.execute("SELECT * FROM recurring_tasks WHERE owner=? AND id=?", (owner, task_id)).fetchone()
             if not row:
                 raise LookupError("Task not found")
@@ -221,7 +221,7 @@ class TaskStore:
             row = db.execute("SELECT t.* FROM recurring_tasks t JOIN task_runs r ON t.id=r.task_id WHERE r.run_id=?", (run_id,)).fetchone()
             if not row:
                 return None
-            keys = [item[0] for item in db.execute("SELECT item_key FROM task_seen_items WHERE task_id=? ORDER BY rowid DESC LIMIT 500", (row["id"],))]
+            keys = [item[0] for item in db.execute(f"SELECT item_key FROM task_seen_items WHERE task_id=? ORDER BY {db.order_column} DESC LIMIT 500", (row["id"],))]
         return {**dict(row), "seen_keys": keys}
 
     def history(self, owner, task_id):
@@ -268,7 +268,7 @@ def finish_task(db, run, status, phase, result):
         new_items = []
         for item in evaluation.get("items", []):
             key = item["key"].strip().casefold()
-            added = db.execute("INSERT OR IGNORE INTO task_seen_items VALUES(?,?)", (task["id"], key))
+            added = db.execute("INSERT INTO task_seen_items(task_id,item_key) VALUES(?,?) ON CONFLICT DO NOTHING", (task["id"], key))
             if added.rowcount:
                 new_items.append(item)
         if new_items:
@@ -284,8 +284,8 @@ def finish_task(db, run, status, phase, result):
                        (f"assistant:{run['id']}", task["chat_id"], content, json.dumps(sources), timestamp))
             db.execute("UPDATE chats SET updated_at=? WHERE id=?", (timestamp, task["chat_id"]))
             db.execute("DELETE FROM chat_search WHERE chat_id=?", (task["chat_id"],))
-            db.execute("""INSERT INTO chat_search SELECT c.id,c.owner,c.title,
-                COALESCE((SELECT group_concat(content,' ') FROM messages WHERE chat_id=c.id),'')
+            db.execute(f"""INSERT INTO chat_search SELECT c.id,c.owner,c.title,
+                COALESCE((SELECT {db.text_aggregate}(content,' ') FROM messages WHERE chat_id=c.id),'')
                 FROM chats c WHERE c.id=?""", (task["chat_id"],))
         db.execute("UPDATE recurring_tasks SET last_success_at=?,previous_result=? WHERE id=?",
                    (run["created_at"], result["reply"][:24000], task["id"]))

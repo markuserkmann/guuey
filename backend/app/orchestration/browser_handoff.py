@@ -4,8 +4,24 @@ import re
 from app.browser.guard import check_url
 from app.browser.exploration import EXPLORATION_POLICY
 from app.orchestration.grounding import GroundedAnswer, finding_coverage, matching_evidence
+from app.orchestration.decisions import research_lookup_requested
 from app.research import live_source
 from app.source_quality import QUALITY_RANK, source_class
+
+
+BROWSER_CHOICE_QUESTION = 'Do you want the AI to check the websites in a browser? This will take longer.'
+
+
+def browser_choice_answer(message):
+    text = message.strip().casefold().rstrip('.!')
+    text = ' '.join(re.sub(r'\bplease\b', '', text).replace(',', ' ').split())
+    if text in {'yes', 'yes use browser', 'use browser', 'yes use the browser', 'use the browser',
+                'yes use the browser to finish the previous search'}:
+        return True
+    if text in {'no', 'no thanks', 'keep web results', 'keep the web results',
+                'keep search results', 'keep the search results'}:
+        return False
+    return None
 
 
 def unresolved_research_requirements(contract, answer, sources):
@@ -92,6 +108,8 @@ def browser_handoff(result, contract, *, search_exhausted=False):
         answer = GroundedAnswer()
     gaps = unresolved_live_requirements(contract, answer, result.sources, include_excluded=True)
     reason = 'unresolved_live_availability'
+    if gaps and not search_exhausted and research_lookup_requested(contract.original_request):
+        return None
     if not gaps:
         gaps = unresolved_research_requirements(contract, answer, result.sources)
         if not gaps:

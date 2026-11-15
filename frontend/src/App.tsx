@@ -17,6 +17,7 @@ import { Composer } from "./components/Composer";
 import { Icon } from "./components/Icon";
 import { BrowserActivity } from "./components/BrowserActivity";
 import { BrowserRequestCard } from "./components/BrowserRequestCard";
+import { BrowserChoice } from "./components/BrowserChoice";
 import { RunActivity } from "./components/RunActivity";
 import { SavedLogins } from "./components/SavedLogins";
 import { RecurringTasks } from "./components/RecurringTasks";
@@ -63,6 +64,7 @@ type Submission = {
   mode: ResearchRun["mode"];
   forceBrowser: boolean;
   failed: boolean;
+  clearDraft?: boolean;
 };
 
 export function App() {
@@ -433,17 +435,19 @@ function Workspace({
     };
   }, [debugOpen, busy, run?.id, token]);
 
-  async function sendSubmission(next: Submission) {
+  async function sendSubmission(next: Submission, clearDraft = true) {
     if (submitLock.current) return;
     submitLock.current = true;
     runGeneration.current += 1;
     setError("");
     setBusy(true);
-    setSubmission({ ...next, failed: false });
+    setSubmission({ ...next, clearDraft, failed: false });
     setRun(null);
     setReconnecting(false);
-    setDraft("");
-    setAttachments([]);
+    if (clearDraft) {
+      setDraft("");
+      setAttachments([]);
+    }
     try {
       const value = await startRun(
         token,
@@ -457,7 +461,7 @@ function Workspace({
       setRun(value);
       setSubmission(null);
     } catch (cause) {
-      setSubmission({ ...next, failed: true });
+      setSubmission({ ...next, clearDraft, failed: true });
       setError(
         cause instanceof Error
           ? cause.message
@@ -650,7 +654,8 @@ function Workspace({
             busy={busy}
             onSend={sendContent}
             onRetry={() => {
-              if (submission) void sendSubmission(submission);
+              if (submission)
+                void sendSubmission(submission, submission.clearDraft ?? true);
             }}
             onCancel={() => runAction("cancel")}
             activeMessageId={
@@ -728,10 +733,32 @@ function Workspace({
                 </p>
               </div>
             )}
+            <BrowserChoice
+              run={run}
+              activeChatId={activeId}
+              busy={busy || loadingChat || !!submission}
+              enabled={!!health?.browser_enabled}
+              onChoose={({ content, forceBrowser }) => {
+                if (!run) return;
+                void sendSubmission(
+                  {
+                    requestId: crypto.randomUUID(),
+                    chatId: activeId,
+                    content,
+                    mode: run.mode,
+                    attachments: [],
+                    forceBrowser,
+                    failed: false,
+                  },
+                  false,
+                );
+              }}
+            />
             {!busy &&
               run?.chat_id === activeId &&
               run.status === "partial" &&
               run.mode !== "deep" &&
+              run.result?.next_action?.kind !== "browser_opt_in" &&
               !isBrowserRun(run) && (
                 <div className="waiting">
                   <p>Some requirements may need more research.</p>

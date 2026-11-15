@@ -24,7 +24,8 @@ def test_browser_disabled_refuses(tmp_path, monkeypatch):
         runs.create('owner', chat['id'], 'continue', 'Order a pizza', 'deep', run['id'])
 
 
-def test_enabled_browser_routes_to_browser_executor(tmp_path, monkeypatch):
+@pytest.mark.parametrize('explicit', [False, True])
+def test_enabled_browser_requires_a_browser_choice(tmp_path, monkeypatch, explicit):
     monkeypatch.setenv('CHAT_DATABASE_PATH', str(tmp_path / 'enabled.sqlite3'))
     monkeypatch.setenv('BROWSER_ENABLED', 'true')
     monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='browser', confidence=1))
@@ -36,11 +37,12 @@ def test_enabled_browser_routes_to_browser_executor(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, 'execute_browser', execute)
     runs = RunStore()
     chat = ChatStore(str(runs.path)).create('owner')
-    run = runs.create('owner', chat['id'], 'request', 'Open the website', 'auto')
+    message = 'Open the website in a browser' if explicit else 'Open the website'
+    run = runs.create('owner', chat['id'], 'request', message, 'auto')
     runs.claim()
     worker.execute(run['id'])
-    assert len(calls) == 1
-    assert runs.get('owner', run['id'])['phase'] == 'browser_done'
+    assert len(calls) == int(explicit)
+    assert runs.get('owner', run['id'])['phase'] == ('browser_done' if explicit else 'awaiting_browser_choice')
 
 
 @pytest.mark.parametrize('deadline,should_kill', [(2000, False), (999, False), (None, True)])

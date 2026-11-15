@@ -45,13 +45,13 @@ def result(*, complete=False, interactive=False, knowledge=False):
     return finish_research_result(turn, contract)
 
 
-def setup_run(tmp_path, monkeypatch, *, mode='auto', enabled=True, opt_out=False):
+def setup_run(tmp_path, monkeypatch, *, mode='auto', enabled=True, opt_out=False, message=REQUEST):
     monkeypatch.setenv('CHAT_DATABASE_PATH', str(tmp_path / 'recovery.sqlite3'))
     monkeypatch.setenv('BROWSER_ENABLED', str(enabled).lower())
     monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='research', confidence=1))
     runs = RunStore()
     chat = ChatStore().create('owner')
-    message = REQUEST + (' without a browser' if opt_out else '')
+    message += ' without a browser' if opt_out else ''
     run = runs.create('owner', chat['id'], 'request', message, mode)
     runs.claim()
     browser_calls = []
@@ -152,7 +152,8 @@ def test_checkout_stock_excluded_from_search_can_still_be_checked_in_browser():
         {'requirement_id': 'stock', 'requirement': 'In stock', 'status': 'unknown', 'statement': '',
          'refinement_excluded': True, 'reason': 'Stock shown at checkout', 'evidence': []}]}]})
     turn = TurnResult(reply='', sources=[], debug={'output': answer.model_dump_json()})
-    assert browser_handoff(turn, contract)['reason'] == 'unresolved_live_availability'
+    assert browser_handoff(turn, contract) is None
+    assert browser_handoff(turn, contract, search_exhausted=True)['reason'] == 'unresolved_live_availability'
 
 
 def test_handoff_keeps_verified_facts_and_excludes_unsafe_source_urls():
@@ -174,7 +175,7 @@ def test_renderer_does_not_tell_user_to_repeat_research():
     assert 'Try a broader search' not in text
 
 
-def test_worker_tries_deeper_search_before_browser_fallback(tmp_path, monkeypatch):
+def test_worker_tries_deeper_search_before_offering_browser(tmp_path, monkeypatch):
     runs, run, browser_calls = setup_run(tmp_path, monkeypatch)
     research_calls = []
 
@@ -186,13 +187,16 @@ def test_worker_tries_deeper_search_before_browser_fallback(tmp_path, monkeypatc
     session = object()
     worker.execute(run['id'], browser_session=session)
     saved = runs.get('owner', run['id'])
-    assert len(research_calls) == 2 and len(browser_calls) == 1
+    assert len(research_calls) == 2 and not browser_calls
     assert 'Wheelchair access' in research_calls[1]['history'][-1].content
     assert research_calls[1]['seed_sources'][0]['url'] == URL
-    assert browser_calls[0]['options']['session'] is session
-    assert saved['status'] == 'completed'
-    assert saved['debug']['recovery']['action'] == 'browser'
-    assert saved['debug']['browser_handoff']['reason'] == 'research_exhausted'
+    assert saved['status'] == 'partial'
+    assert saved['debug']['recovery']['action'] == 'ask_user'
+    assert saved['debug']['browser_offer']['reason'] == 'research_exhausted'
+    assert saved['result']['next_action']['kind'] == 'browser_opt_in'
+    assert saved['result']['sources'][0]['url'] == URL
+    assert 'This will take longer.' in saved['result']['reply']
+    assert saved['browser'] is None
 
 
 def test_second_research_round_can_resolve_without_browser(tmp_path, monkeypatch):
@@ -212,7 +216,7 @@ def test_second_research_round_can_resolve_without_browser(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize('stop', ['stall', 'no_queries', 'deadline', 'provider_deadline'])
-def test_terminal_search_paths_assess_browser_before_giving_up(tmp_path, monkeypatch, stop):
+def test_terminal_search_paths_offer_browser_without_opening_it(tmp_path, monkeypatch, stop):
     runs, run, browser_calls = setup_run(tmp_path, monkeypatch, mode='deep')
     calls = []
     clock = [0]
@@ -234,10 +238,11 @@ def test_terminal_search_paths_assess_browser_before_giving_up(tmp_path, monkeyp
     monkeypatch.setattr(worker, 'run_turn', research)
     worker.execute(run['id'])
     saved = runs.get('owner', run['id'])
-    assert len(browser_calls) == 1
+    assert not browser_calls
     assert len(calls) == (1 if stop == 'deadline' else 2)
-    assert saved['debug']['browser_handoff']['reason'] == 'research_exhausted'
-    assert saved['status'] == 'completed'
+    assert saved['debug']['browser_offer']['reason'] == 'research_exhausted'
+    assert saved['status'] == 'partial'
+    assert saved['phase'] == 'awaiting_browser_choice'
 
 
 @pytest.mark.parametrize('enabled,opt_out', [(False, False), (True, True)])
@@ -257,7 +262,7 @@ def test_recovery_respects_browser_settings_and_explains_the_obstacle(tmp_path, 
     assert 'Browser verification is' in saved['result']['reply']
 
 
-def test_fast_mode_keeps_one_search_round_then_assesses_browser(tmp_path, monkeypatch):
+def test_fast_mode_keeps_one_search_round_then_offers_browser(tmp_path, monkeypatch):
     runs, run, browser_calls = setup_run(tmp_path, monkeypatch, mode='fast')
     calls = []
 
@@ -267,10 +272,44 @@ def test_fast_mode_keeps_one_search_round_then_assesses_browser(tmp_path, monkey
 
     monkeypatch.setattr(worker, 'run_turn', research)
     worker.execute(run['id'])
-    assert len(calls) == 1 and len(browser_calls) == 1
+    assert len(calls) == 1 and not browser_calls
+    assert runs.get('owner', run['id'])['result']['next_action']['kind'] == 'browser_opt_in'
 
 
-def test_exhausted_continuation_can_use_browser_with_saved_research(tmp_path, monkeypatch):
+@pytest.mark.parametrize('mode', ['fast', 'auto'])
+def test_reported_store_availability_still_offers_optional_browser_check(tmp_path, monkeypatch, mode):
+    message = 'Find a store with packing tape in stock'
+    runs, run, browser_calls = setup_run(tmp_path, monkeypatch, mode=mode, message=message)
+    source = {'url': 'https://store.example/a', 'title': 'Store A',
+              'text': 'Store A sells packing tape.\n\nStore A has availability.'}
+    contract = ResearchContract(original_request=message, requested_count=1, requirements=[
+        Requirement(id='type', description='Packing tape'),
+        Requirement(id='availability', description='Current availability', kind='availability')])
+    answer = GroundedAnswer.model_validate({'findings': [{'name': 'Store A', 'source_url': source['url'], 'checks': [
+        {'requirement_id': 'type', 'requirement': 'Packing tape', 'status': 'met', 'statement': 'Sells packing tape',
+         'evidence': [{'source_url': source['url'], 'quote': 'Store A sells packing tape.'}]},
+        {'requirement_id': 'availability', 'requirement': 'Availability', 'status': 'unknown', 'basis': 'reported',
+         'statement': 'Has availability', 'evidence': [{'source_url': source['url'], 'quote': 'Store A has availability.'}]}]}]})
+    searches = []
+
+    def research(*args, **kwargs):
+        searches.append(True)
+        return TurnResult(reply='', sources=[source], debug={
+            'output': answer.model_dump_json(), 'research_contract': contract.model_dump()})
+
+    monkeypatch.setattr(worker, 'run_turn', research)
+    worker.execute(run['id'])
+    saved = runs.get('owner', run['id'])
+    assert searches == [True] and not browser_calls
+    assert saved['phase'] == 'awaiting_browser_choice' and saved['status'] == 'partial'
+    assert saved['result']['next_action']['kind'] == 'browser_opt_in'
+    assert saved['debug']['browser_offer']['reason'] == 'unresolved_live_availability'
+    assert saved['debug']['stages'][0]['coverage']['verified'] == 0
+    assert 'Reported: Has availability' in saved['result']['reply']
+    assert saved['result']['sources'][0]['url'] == source['url']
+
+
+def test_exhausted_deep_continuation_offers_browser_with_saved_research(tmp_path, monkeypatch):
     runs, run, browser_calls = setup_run(tmp_path, monkeypatch, enabled=False)
     monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: result())
     worker.execute(run['id'])
@@ -283,9 +322,10 @@ def test_exhausted_continuation_can_use_browser_with_saved_research(tmp_path, mo
 
     monkeypatch.setattr(worker, 'run_turn', exhausted)
     worker.execute(child['id'])
-    assert len(browser_calls) == 1
-    assert URL in browser_calls[0]['context']
-    assert runs.get('owner', child['id'])['status'] == 'completed'
+    assert not browser_calls
+    saved = runs.get('owner', child['id'])
+    assert saved['debug']['browser_offer']['sources'][0]['url'] == URL
+    assert saved['status'] == 'partial'
 
 
 def test_retrieval_executes_fallback_queries_when_planner_gives_up_on_leads(monkeypatch):

@@ -170,7 +170,11 @@ export type ResearchRun = {
   phase: string;
   browser?: BrowserState | null;
   live_output?: { kind: "answer" | "draft" | "progress"; text: string } | null;
-  result: { reply: string; sources: ChatSource[] } | null;
+  result: {
+    reply: string;
+    sources: ChatSource[];
+    next_action?: { kind: string; text?: string };
+  } | null;
   debug: {
     stages?: ModelTrace[];
     decision?: { deep_recommended: boolean; workflow?: string };

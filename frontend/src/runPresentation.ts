@@ -46,6 +46,16 @@ export function runPresentation(run: ResearchRun, reconnecting = false) {
     !!run.result?.reply ||
     (!!run.live_output?.text && run.live_output.kind !== "progress");
   if (!active) {
+    if (
+      run.status === "partial" &&
+      run.result?.next_action?.kind === "browser_opt_in"
+    )
+      return {
+        title: "Browser check available",
+        detail:
+          "Checking websites will take longer. It starts only if you choose it.",
+        state: "incomplete",
+      } as const;
     if (run.phase === "submission_unknown")
       return {
         title: "Browser result needs review",

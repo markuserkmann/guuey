@@ -11,6 +11,20 @@ def type_subject(value: str) -> str:
     return " ".join(value.split())
 
 
+def pickup_requested(request: str) -> bool:
+    noun = r"(?:pick[ -]?up(?!\s+trucks?\b)|collection(?!\s+of\b))"
+    pickup = r"(?:" + noun + r"|collect)"
+    intent = (r"\b(?:pick[ -]up(?!\s+trucks?\b)|collect)\b|"
+              r"\b(?:for|with|offers?|offering|supports?|in[ -]store|store|local)\s+" + noun + r"\b|"
+              r"\b" + noun + r"\s+(?:in|at|from|only|available|required|or|locations?|points?)\b")
+    if not re.search(intent, request, re.I):
+        return False
+    if re.search(r"\b(?:no|not|don't|don’t|without|avoid)\s+(?:using\s+)?" + pickup + r"\b", request, re.I):
+        return False
+    return not re.search(r"\b(?:" + pickup + r"\s+or\s+(?:delivery|shipping)|"
+                         r"(?:delivery|shipping)\s+or\s+" + pickup + r")\b", request, re.I)
+
+
 class Requirement(BaseModel):
     id: str
     description: str
@@ -49,7 +63,7 @@ class ResearchContract(BaseModel):
     clarification_question: str | None = Field(default=None, description="One focused question only if the ambiguity prevents useful progress. Otherwise null.")
     answer_format: Literal["prose", "table"] = "prose"
     artifact: Literal["answer", "comparison", "checklist", "message_draft", "plan", "form_draft"] = "answer"
-    requested_count: int | None = Field(default=None, ge=1, le=100, description="Number of recommended options explicitly requested, never number of people, nights, hours or hardware specs.")
+    requested_count: int | None = Field(default=None, ge=1, le=100, description="Number of recommended options explicitly requested, never quantities to purchase, people, nights, hours or hardware specs.")
     count_quote: str | None = Field(default=None, description="Exact words including the counted noun, e.g. '3 laptops', from the original request. Null if no result count was requested.")
     requirements: list[Requirement] = Field(default_factory=list, description="Additional atomic constraints only. Subject, anchor, destination and booking_required generate their own checks: do not repeat those here. For a service with no extra budget, date or accessibility constraints, return [].")
 
@@ -92,12 +106,17 @@ class ResearchContract(BaseModel):
             # Stock and delivery are distinct: an in-stock offer may not ship to the buyer.
             self.requirements = [r for r in self.requirements
                                  if r.kind not in {"stock", "delivery"} and r.id not in {"stock", "delivery"}
+                                 and not (r.id == "pickup" and r.description.startswith("The requested items can be picked up"))
                                  and not (self.destination and self.destination.casefold() in r.description.casefold()
                                           and re.search(r"\b(available|availability|shipping|delivery|purchase|buy)\b", r.description, re.I))]
             stock_requested = not self.original_request or bool(re.search(r"\b(?:stock|in stock|availability|available now)\b", self.original_request, re.I))
             self.requirements.append(Requirement(id="stock", kind="stock", description="Currently in stock for this exact configuration",
                                                  strength="hard" if stock_requested else "preference"))
-            if self.destination:
+            if pickup_requested(self.original_request):
+                self.requirements = [r for r in self.requirements if r.id != "pickup"]
+                location = f" at a physical store in {self.destination}" if self.destination else " at a physical store"
+                self.requirements.append(Requirement(id="pickup", description=f"The requested items can be picked up{location}; delivery alone does not satisfy this requirement"))
+            elif self.destination:
                 self.requirements.append(Requirement(id="delivery", kind="delivery", description=f"Available to buy in or deliver to {self.destination}"))
         elif self.activity == "service":
             self.requirements = [r for r in self.requirements if r.kind not in {"stock", "delivery"}]

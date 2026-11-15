@@ -24,8 +24,8 @@ SCHEMA = '''
     );
     CREATE TABLE IF NOT EXISTS browser_requests (
         id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), owner TEXT NOT NULL,
-        kind TEXT NOT NULL, site TEXT NOT NULL, payload TEXT NOT NULL, screenshot BLOB,
-        secret_values BLOB, response TEXT, status TEXT NOT NULL,
+        kind TEXT NOT NULL, site TEXT NOT NULL, payload TEXT NOT NULL, screenshot BYTEA,
+        secret_values BYTEA, response TEXT, status TEXT NOT NULL,
         created_at TEXT NOT NULL, expires_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS browser_requests_run ON browser_requests(run_id, status);
@@ -39,13 +39,13 @@ SCHEMA = '''
     );
     CREATE TABLE IF NOT EXISTS browser_sessions (
         id TEXT PRIMARY KEY, owner TEXT NOT NULL, site TEXT NOT NULL, status TEXT NOT NULL,
-        state BLOB NOT NULL, cookie_count INTEGER NOT NULL, updated_at TEXT NOT NULL,
+        state BYTEA NOT NULL, cookie_count INTEGER NOT NULL, updated_at TEXT NOT NULL,
         UNIQUE(owner, site)
     );
     CREATE TABLE IF NOT EXISTS browser_session_leases (
         owner TEXT NOT NULL, site TEXT NOT NULL, token TEXT NOT NULL UNIQUE,
         run_id TEXT NOT NULL REFERENCES runs(id), session_id TEXT, revision INTEGER,
-        expires_at REAL NOT NULL, PRIMARY KEY(owner,site)
+        expires_at DOUBLE PRECISION NOT NULL, PRIMARY KEY(owner,site)
     );
 '''
 SESSION_COLUMNS = 'id,site,status,cookie_count,updated_at,revision'
@@ -67,12 +67,12 @@ class SessionLease:
 
 
 def extend_schema(db):
-    columns = {row['name'] for row in db.execute('PRAGMA table_info(browser_sessions)')}
+    columns = db.columns("browser_sessions")
     if 'revision' not in columns:
         db.execute('ALTER TABLE browser_sessions ADD COLUMN revision INTEGER NOT NULL DEFAULT 1')
     if 'state_version' not in columns:
         db.execute('ALTER TABLE browser_sessions ADD COLUMN state_version INTEGER NOT NULL DEFAULT 1')
-    if 'site' not in {row['name'] for row in db.execute('PRAGMA table_info(browser_actions)')}:
+    if 'site' not in db.columns("browser_actions"):
         db.execute("ALTER TABLE browser_actions ADD COLUMN site TEXT NOT NULL DEFAULT ''")
         for row in db.execute('SELECT id,url FROM browser_actions').fetchall():
             try:
@@ -125,7 +125,7 @@ class BrowserStore:
 
     def start(self, owner, run_id):
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             self._run(db, owner, run_id, running=True)
             changed = db.execute("UPDATE runs SET deadline_at=?,phase='browser_starting',updated_at=? WHERE owner=? AND id=? AND status='running' AND deadline_at IS NULL",
                        (time.time() + self.settings.deadline_s, now(), owner, run_id))
@@ -162,7 +162,7 @@ class BrowserStore:
         if status not in {'ok', 'error', 'waiting'}:
             raise ValueError('Invalid browser step status')
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             self._run(db, owner, run_id, running=True)
             seq = db.execute('SELECT COALESCE(MAX(seq),0)+1 FROM browser_steps WHERE run_id=?', (run_id,)).fetchone()[0]
             db.execute('INSERT INTO browser_steps VALUES(?,?,?,?,?,?,?,?)',
@@ -185,7 +185,7 @@ class BrowserStore:
         identifier, timestamp = str(uuid4()), now()
         expiry = (datetime.now(UTC) + timedelta(seconds=timeout)).isoformat()
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             self._run(db, owner, run_id, running=True)
             expire_requests(db, owner, run_id)
             if db.execute("SELECT id FROM browser_requests WHERE owner=? AND run_id=? AND status IN ('pending','answered')",
@@ -194,7 +194,7 @@ class BrowserStore:
             db.execute('''INSERT INTO browser_requests(id,run_id,owner,kind,site,payload,screenshot,status,created_at,expires_at)
                           VALUES(?,?,?,?,?,?,?,'pending',?,?)''',
                        (identifier, run_id, owner, kind, site, json.dumps(payload), screenshot, timestamp, expiry))
-            db.execute('UPDATE runs SET phase=?,deadline_at=MAX(COALESCE(deadline_at,0),?),updated_at=? WHERE owner=? AND id=?',
+            db.execute(f'UPDATE runs SET phase=?,deadline_at={db.greatest}(COALESCE(deadline_at,0),?),updated_at=? WHERE owner=? AND id=?',
                        ('awaiting_' + kind, time.time() + timeout + 60, timestamp, owner, run_id))
         return self.get_request(owner, run_id, identifier)
 
@@ -212,7 +212,7 @@ class BrowserStore:
         body = BrowserResponse.model_validate(response).model_dump(exclude_none=True)
         conflict = False
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             self._run(db, owner, run_id, running=True)
             expire_requests(db, owner, run_id)
             row = db.execute('SELECT * FROM browser_requests WHERE owner=? AND run_id=? AND id=?',
@@ -251,7 +251,7 @@ class BrowserStore:
 
     def take_response(self, owner, run_id, request_id):
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             self._run(db, owner, run_id, running=True)
             expire_requests(db, owner, run_id)
             row = db.execute('SELECT * FROM browser_requests WHERE owner=? AND run_id=? AND id=?',
@@ -277,7 +277,7 @@ class BrowserStore:
         site = site_of(url)
         identifier, timestamp = str(uuid4()), now()
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             self._run(db, owner, run_id, running=True)
             if db.execute("SELECT id FROM browser_actions WHERE owner=? AND site=? AND status IN ('attempting','approved','submitted','unverified')",
                           (owner, site)).fetchone():
@@ -291,7 +291,7 @@ class BrowserStore:
         if decision not in {'confirmed', 'not_completed'} or not evidence.strip():
             raise ValueError('Provide the checked result and evidence from your account')
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             row = db.execute('SELECT a.status,r.status AS run_status FROM browser_actions a JOIN runs r ON r.id=a.run_id WHERE a.owner=? AND a.id=?',
                              (owner, action_id)).fetchone()
             if row is None:
@@ -309,7 +309,7 @@ class BrowserStore:
 
     def update_action(self, owner, run_id, action_id, status, evidence=None):
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             self._run(db, owner, run_id, running=True)
             row = db.execute('SELECT status FROM browser_actions WHERE owner=? AND run_id=? AND id=?', (owner, run_id, action_id)).fetchone()
             if row is None:
@@ -341,7 +341,7 @@ class BrowserStore:
     def acquire_session(self, owner, run_id, site):
         site = site_of('https://' + site)
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             run = self._run(db, owner, run_id, running=True)
             if run['deadline_at'] is None or run['deadline_at'] <= time.time():
                 raise SessionConflict('Browser run has expired or has not started')
@@ -370,7 +370,7 @@ class BrowserStore:
     def require_session(self, lease, renew=False):
         with self.runs.connect() as db:
             if renew:
-                db.execute('BEGIN IMMEDIATE')
+                db.begin_write()
             run = self._require_lease(db, lease)
             if renew:
                 db.execute('UPDATE browser_session_leases SET expires_at=? WHERE owner=? AND site=? AND token=?',
@@ -388,7 +388,7 @@ class BrowserStore:
         key = self.settings.encryption_key()
         state = filter_storage_state(state, site)
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             self._clear_inactive_leases(db)
             if lease is not None:
                 if (lease.owner, lease.site) != (owner, site):
@@ -423,7 +423,7 @@ class BrowserStore:
 
     def expire_session(self, owner, session_id, *, lease=None):
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             if lease is not None:
                 self._require_lease(db, lease)
             changed = db.execute("UPDATE browser_sessions SET status='expired',updated_at=? WHERE owner=? AND id=?", (now(), owner, session_id)).rowcount
@@ -432,7 +432,7 @@ class BrowserStore:
 
     def delete_session(self, owner, session_id):
         with self.runs.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             if not db.execute('DELETE FROM browser_sessions WHERE owner=? AND id=?', (owner, session_id)).rowcount:
                 raise LookupError('Saved login not found')
             db.execute("""UPDATE browser_requests SET status='expired',secret_values=NULL WHERE owner=?

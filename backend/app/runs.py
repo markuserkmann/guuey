@@ -25,32 +25,34 @@ class RunStore(ChatStore):
                 CREATE INDEX IF NOT EXISTS runs_chat ON runs(owner, chat_id, created_at);
                 CREATE TABLE IF NOT EXISTS browser_warm_reservations (
                     owner TEXT NOT NULL, chat_id TEXT NOT NULL, token TEXT NOT NULL,
-                    expires_at REAL NOT NULL, PRIMARY KEY(owner, chat_id)
+                    expires_at DOUBLE PRECISION NOT NULL, PRIMARY KEY(owner, chat_id)
                 );
             ''')
             db.executescript(SCHEMA)
             db.executescript(TASK_SCHEMA)
             db.executescript(TELEGRAM_SCHEMA)
-            db.execute('BEGIN IMMEDIATE')
-            if 'telegram_enabled' not in {row['name'] for row in db.execute('PRAGMA table_info(recurring_tasks)')}:
+            db.begin_write()
+            db.add_order_column('runs')
+            db.add_order_column('task_seen_items')
+            if 'telegram_enabled' not in db.columns("recurring_tasks"):
                 db.execute('ALTER TABLE recurring_tasks ADD COLUMN telegram_enabled INTEGER NOT NULL DEFAULT 0')
-            if 'attachments' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
+            if 'attachments' not in db.columns("runs"):
                 db.execute("ALTER TABLE runs ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'")
-            if 'live_output' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
+            if 'live_output' not in db.columns("runs"):
                 db.execute("ALTER TABLE runs ADD COLUMN live_output TEXT")
-            if 'timezone' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
+            if 'timezone' not in db.columns("runs"):
                 db.execute("ALTER TABLE runs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
-            columns = {row['name'] for row in db.execute('PRAGMA table_info(runs)')}
+            columns = db.columns("runs")
             if 'force_browser' not in columns:
                 if 'allow_browser' in columns:
                     db.execute('ALTER TABLE runs RENAME COLUMN allow_browser TO force_browser')
                 else:
                     db.execute('ALTER TABLE runs ADD COLUMN force_browser INTEGER NOT NULL DEFAULT 0')
-            if 'deadline_at' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
-                db.execute('ALTER TABLE runs ADD COLUMN deadline_at REAL')
-            if 'browser_view' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
+            if 'deadline_at' not in db.columns("runs"):
+                db.execute('ALTER TABLE runs ADD COLUMN deadline_at DOUBLE PRECISION')
+            if 'browser_view' not in db.columns("runs"):
                 db.execute('ALTER TABLE runs ADD COLUMN browser_view TEXT')
-            if 'worker_id' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
+            if 'worker_id' not in db.columns("runs"):
                 db.execute('ALTER TABLE runs ADD COLUMN worker_id TEXT')
             db.execute('CREATE INDEX IF NOT EXISTS runs_worker ON runs(worker_id)')
             extend_schema(db)
@@ -74,6 +76,7 @@ class RunStore(ChatStore):
         data.pop('owner', None)
         data.pop('browser_view', None)
         data.pop('worker_id', None)
+        data.pop('position', None)
         return data
 
     def create(self, owner, chat_id, request_id, message, mode, parent_id=None, attachments=None, timezone='UTC', force_browser=False):
@@ -81,7 +84,7 @@ class RunStore(ChatStore):
         validate_timezone(timezone)
         attachments = attachments or []
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             old = db.execute('SELECT * FROM runs WHERE owner=? AND request_id=?', (owner, request_id)).fetchone()
             if old:
                 if (old['chat_id'], old['message'], old['mode'], json.loads(old['attachments']), old['timezone'], bool(old['force_browser'])) != (chat_id, message, mode, attachments, timezone, force_browser):
@@ -103,7 +106,7 @@ class RunStore(ChatStore):
                 if (parent['deadline_at'] is not None or parent['phase'].startswith('browser_')
                         or json.loads(parent['debug']).get('decision', {}).get('workflow') == 'browser'):
                     raise ValueError('Browser runs cannot be continued with Deep')
-                if db.execute('SELECT id FROM runs WHERE chat_id=? AND rowid > (SELECT rowid FROM runs WHERE id=?) LIMIT 1',
+                if db.execute(f'SELECT id FROM runs WHERE chat_id=? AND {db.order_column} > (SELECT {db.order_column} FROM runs WHERE id=?) LIMIT 1',
                               (chat_id, parent_id)).fetchone():
                     raise ValueError('A newer turn exists; continue the current task instead')
             identifier, timestamp = str(uuid4()), now()
@@ -114,7 +117,7 @@ class RunStore(ChatStore):
 
     def claim(self, *, max_running=None):
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             if max_running is not None and db.execute("SELECT COUNT(*) FROM runs WHERE status='running'").fetchone()[0] >= max_running:
                 return None
             row = db.execute("""SELECT runs.* FROM runs WHERE status='queued' AND NOT EXISTS (
@@ -129,17 +132,17 @@ class RunStore(ChatStore):
 
     def reserve_warm_browser(self, owner, chat_id, token, expires_at):
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             db.execute('DELETE FROM browser_warm_reservations WHERE expires_at<=?', (time.time(),))
             if not db.execute('SELECT 1 FROM chats WHERE owner=? AND id=?', (owner, chat_id)).fetchone():
                 return False
-            cursor = db.execute('INSERT OR IGNORE INTO browser_warm_reservations VALUES (?, ?, ?, ?)',
+            cursor = db.execute('INSERT INTO browser_warm_reservations VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
                                 (owner, chat_id, token, expires_at))
             return cursor.rowcount == 1
 
     def claim_warm_browser(self, owner, chat_id, token, *, max_running=None):
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             reservation = db.execute('''SELECT 1 FROM browser_warm_reservations
                 WHERE owner=? AND chat_id=? AND token=? AND expires_at>?''',
                                      (owner, chat_id, token, time.time())).fetchone()
@@ -169,7 +172,7 @@ class RunStore(ChatStore):
 
     def worker_run(self, token):
         with self.connect() as db:
-            row = db.execute('SELECT * FROM runs WHERE worker_id=? OR id=? ORDER BY rowid DESC LIMIT 1',
+            row = db.execute(f'SELECT * FROM runs WHERE worker_id=? OR id=? ORDER BY {db.order_column} DESC LIMIT 1',
                              (token, token)).fetchone()
         return dict(row) if row else None
 
@@ -185,11 +188,12 @@ class RunStore(ChatStore):
 
     def update_initial_output(self, run_id, output):
         with self.connect() as db:
-            changed = db.execute("""UPDATE runs SET live_output=?, updated_at=?
+            stage = "live_output::jsonb->>'stage'" if db.postgres else "json_extract(live_output, '$.stage')"
+            changed = db.execute(f"""UPDATE runs SET live_output=?, updated_at=?
                 WHERE id=? AND status='running' AND result IS NULL
                 AND phase NOT LIKE 'awaiting_%' AND phase != 'error'
                 AND (live_output IS NULL OR live_output='null'
-                     OR json_extract(live_output, '$.stage')='initial_response')""",
+                     OR {stage}='initial_response')""",
                 (json.dumps(output, ensure_ascii=False), now(), run_id))
         return changed.rowcount > 0
 
@@ -209,7 +213,7 @@ class RunStore(ChatStore):
 
     def finish(self, run_id, status, phase, *, warm_token=None, warm_seconds=60):
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.begin_write()
             row = db.execute('SELECT * FROM runs WHERE id=?', (run_id,)).fetchone()
             if not row or row['status'] not in ('running', 'queued'):
                 return
@@ -239,7 +243,7 @@ class RunStore(ChatStore):
                 status, phase = 'failed', 'missing_result'
             if warm_token and (status, phase) in {('completed', 'browser_done'), ('partial', 'browser_needs_user')}:
                 db.execute('DELETE FROM browser_warm_reservations WHERE expires_at<=?', (time.time(),))
-                db.execute('INSERT OR IGNORE INTO browser_warm_reservations VALUES (?, ?, ?, ?)',
+                db.execute('INSERT INTO browser_warm_reservations VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
                            (row['owner'], row['chat_id'], warm_token, time.time() + warm_seconds))
             scheduled = finish_task(db, row, status, phase, result)
             if result and not scheduled:
@@ -249,7 +253,7 @@ class RunStore(ChatStore):
                 db.execute('INSERT INTO messages(id,chat_id,role,content,sources,created_at) VALUES(?,?,?,?,?,?)', (f"assistant:{row['id']}", row['chat_id'], 'assistant', result['reply'], json.dumps(result['sources']), timestamp))
                 db.execute("UPDATE chats SET title=CASE WHEN title='New chat' THEN ? ELSE title END, updated_at=? WHERE id=?", (row['message'][:80], timestamp, row['chat_id']))
                 db.execute('DELETE FROM chat_search WHERE chat_id=?', (row['chat_id'],))
-                db.execute("INSERT INTO chat_search SELECT c.id,c.owner,c.title,COALESCE((SELECT group_concat(content, ' ') FROM messages WHERE chat_id=c.id),'') FROM chats c WHERE c.id=?", (row['chat_id'],))
+                db.execute(f"INSERT INTO chat_search SELECT c.id,c.owner,c.title,COALESCE((SELECT {db.text_aggregate}(content, ' ') FROM messages WHERE chat_id=c.id),'') FROM chats c WHERE c.id=?", (row['chat_id'],))
             db.execute('UPDATE runs SET status=?,phase=?,updated_at=?,live_output=NULL,browser_view=NULL,result=? WHERE id=?',
                        (status, phase, now(), json.dumps(result) if result else None, run_id))
 

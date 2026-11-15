@@ -6,18 +6,27 @@ from app.orchestration.contracts import Budget, ResearchContract, SearchQuery, R
 
 RESULT_NOUNS = (r"laptops?|computers?|phones?|tablets?|headphones?|monitors?|products?|offers?|"
                 r"hotels?|restaurants?|cafes?|saunas?|providers?|services?|destinations?|spots?|"
-                r"places?|cities|towns|options?|alternatives?|recommendations?|courses?|books?|games?")
+                r"places?|cities|towns|stores?|shops?|retailers?|suppliers?|options?|alternatives?|recommendations?|courses?|books?|games?")
 
 
 def result_subjects(text: str) -> set[str]:
     return {match[0].casefold().removesuffix("s") for match in re.finditer(r"\b(?:" + RESULT_NOUNS + r")\b", text, re.I)}
 
 
+def purchase_quantity_quote(quote: str, request: str) -> bool:
+    for match in re.finditer(re.escape(quote), request, re.I):
+        if re.search(r"\b(?:pick[ -]?up|collect|purchase|buy|selling|stocking)\s+(?:\w+\s+){0,3}$",
+                     request[:match.start()], re.I):
+            return True
+    return False
+
+
 def requested_result_count(text: str) -> tuple[int, str] | None:
     words = {word: index for index, word in enumerate(
         ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"), 1)}
     count = r"(?:100|[1-9]\d?|" + "|".join(words) + r")"
-    matches = list(re.finditer(r"\b(" + count + r")\s+(?:[\w-]+\s+){0,4}?(?:" + RESULT_NOUNS + r")\b", text, re.I))
+    matches = [match for match in re.finditer(r"\b(" + count + r")\s+(?:[\w-]+\s+){0,4}?(?:" + RESULT_NOUNS + r")\b", text, re.I)
+               if not purchase_quantity_quote(match[0], text)]
     if len(matches) != 1:
         return None
     match = matches[0]
@@ -63,8 +72,18 @@ def preserve_request(contract: ResearchContract, original: str) -> ResearchContr
     if re.search(r"\btable\b", original, re.I):
         contract.answer_format = "table"
     result_count = requested_result_count(original)
+    quantity_quote = contract.count_quote if contract.count_quote and purchase_quantity_quote(contract.count_quote, original) else None
+    if quantity_quote:
+        if not any(contract.count_quote.casefold() in requirement.description.casefold()
+                   for requirement in contract.requirements):
+            identifier = 'purchase_quantity'
+            while any(requirement.id == identifier for requirement in contract.requirements):
+                identifier += '_item'
+            contract.requirements.append(Requirement(id=identifier, description='Quantity to purchase: ' + contract.count_quote))
     if result_count:
         contract.requested_count, contract.count_quote = result_count
+    elif quantity_quote:
+        contract.requested_count = contract.count_quote = None
     hotels_requested = re.search(r"\bhotels?\b", original, re.I) and not re.search(
         r"\b(?:hostels?|guesthouses?|accommodation|apartments?)\b", original, re.I)
     if hotels_requested:

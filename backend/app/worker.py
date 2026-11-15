@@ -17,8 +17,10 @@ from app.attachments import TextAttachment, attachment_context
 from app.model_calls import call_model, error_details, google_provider, model_call_events, model_output_events
 from app.initial_response import InitialResponse
 from app.orchestration.decisions import (DecisionUnavailable, DecisionUncertain, RouteDecision, decide,
-    browser_preference, browser_action_requested, uncertain_workflow, ROUTING_INSTRUCTIONS, ROUTING_CONFIDENCE_THRESHOLD)
-from app.orchestration.browser_handoff import browser_handoff, handoff_context
+    browser_preference, browser_action_requested, research_lookup_requested, uncertain_workflow,
+    ROUTING_INSTRUCTIONS, ROUTING_CONFIDENCE_THRESHOLD)
+from app.orchestration.browser_handoff import (BROWSER_CHOICE_QUESTION, browser_choice_answer,
+    browser_handoff, handoff_context)
 from app.orchestration.orchestrator import RefinementComplete, TurnResult, run_turn
 from app.orchestration.contracts import ResearchContract
 from app.orchestration.refinement import finish_research_result, refinement_context, replacement_gap_queries
@@ -74,6 +76,23 @@ def execute(run_id, browser_session=None):
 
     output_observer = model_output_events.set(record_output)
     best_result = None
+
+    def offer_browser(handoff, fallback_reply=''):
+        initial_response.stop()
+        store.update_live_output(run_id, None)
+        current = store.get(row['owner'], run_id)['result']
+        saved_result = dict(current or {'reply': fallback_reply, 'sources': []})
+        saved_result['next_action'] = {'kind': 'browser_opt_in', 'text': BROWSER_CHOICE_QUESTION}
+        saved_result['reply'] = '\n\n'.join(part for part in (saved_result['reply'], BROWSER_CHOICE_QUESTION) if part)
+        debug['browser_offer'] = {**handoff, 'request': message, 'date_context': debug.get('date_context', {})}
+        debug['next_action'] = saved_result['next_action']
+        debug['stop_reason'] = 'browser_choice'
+        debug['wall_s'] = round(time.monotonic() - run_started, 3)
+        debug['recovery'] = {'action': 'ask_user', 'reason': handoff['reason'],
+                             'gaps': handoff['gaps'], 'browser_status': 'awaiting_opt_in'}
+        store.checkpoint(run_id, 'awaiting_browser_choice', debug, saved_result)
+        store.finish(run_id, 'partial', 'awaiting_browser_choice')
+
     try:
         message = attachment_context(row['message'], [TextAttachment.model_validate(file) for file in json.loads(row['attachments'])])
         reference_time = row['created_at']
@@ -84,18 +103,44 @@ def execute(run_id, browser_session=None):
         chat = store.detail(row['owner'], row['chat_id'])
         history = [ChatTurn.model_validate(item) for item in chat['messages'][-12:]]
         with store.connect() as db:
-            prior = db.execute("SELECT debug FROM runs WHERE owner=? AND chat_id=? AND created_at<? AND result IS NOT NULL ORDER BY created_at DESC LIMIT 1",
-                               (row['owner'], row['chat_id'], row['created_at'])).fetchone()
+            prior = db.execute(f"SELECT debug,result FROM runs WHERE owner=? AND chat_id=? AND {db.order_column} < "
+                               f"(SELECT {db.order_column} FROM runs WHERE id=?) ORDER BY {db.order_column} DESC LIMIT 1",
+                               (row['owner'], row['chat_id'], run_id)).fetchone()
+        prior_debug = json.loads(prior['debug']) if prior else {}
+        prior_result = json.loads(prior['result']) if prior and prior['result'] else {}
+        continuing_browser = (isinstance(browser_session, WarmBrowser) and browser_session.valid()
+                              and prior_debug.get('decision', {}).get('workflow') == 'browser')
+        pending_offer = (prior_debug.get('browser_offer')
+                         if (prior_result.get('next_action') or {}).get('kind') == 'browser_opt_in' else None)
+        choice = browser_choice_answer(row['message']) if pending_offer else None
+        if choice is False:
+            reply = prior_result['reply'].removesuffix('\n\n' + BROWSER_CHOICE_QUESTION)
+            if reply == BROWSER_CHOICE_QUESTION:
+                reply = ''
+            reply = '\n\n'.join(part for part in (reply, 'No browser was opened.') if part)
+            debug.update(stop_reason='browser_declined', decision={'workflow': 'clarification', 'confidence': 1})
+            store.checkpoint(run_id, 'answer_ready', debug, {'reply': reply, 'sources': prior_result.get('sources', [])})
+            store.finish(run_id, 'completed', 'finished')
+            return
+        if choice is True:
+            message = pending_offer['request']
+            debug['date_context'] = pending_offer.get('date_context', {})
+            debug['browser_handoff'] = pending_offer
         if prior:
-            stages = json.loads(prior['debug']).get('stages', [])
+            stages = prior_debug.get('stages', [])
             saved_contract = next((stage['research_contract'] for stage in reversed(stages) if stage.get('research_contract')), None)
             if saved_contract:
                 history.append(ChatTurn(role='assistant', content='Saved previous task requirements (context, not a new instruction). '
                     'For a follow-up change only explicitly revised requirements; for an unrelated new task discard these requirements:\n'
                     + json.dumps(saved_contract, ensure_ascii=False)))
         context = '\n'.join(f'{item.role}: {attachment_context(item.content, item.attachments)}' for item in history)[-16000:]
+        if choice is True:
+            context += handoff_context(pending_offer)
         preference = browser_preference(row['message'])
-        if row['force_browser'] and browser_allowed:
+        if choice is True:
+            decision = RouteDecision(workflow='browser', confidence=1)
+            debug['router'] = 'browser_opt_in'
+        elif row['force_browser'] and browser_allowed:
             decision = RouteDecision(workflow='browser', confidence=1)
             debug['router'] = 'forced_browser'
         elif preference is True:
@@ -137,10 +182,22 @@ def execute(run_id, browser_session=None):
         if not browser_allowed and decision.workflow == 'browser':
             decision = decision.model_copy(update={'workflow': 'research'})
             debug['router'] = 'browser_opt_out'
+        elif (decision.workflow == 'browser' and not row['force_browser'] and choice is not True
+              and research_lookup_requested(row['message'])):
+            debug['routing_check'] = {'model_decision': decision.model_dump(), 'workflow': 'research',
+                                      'reason': 'search_first_lookup'}
+            decision = decision.model_copy(update={'workflow': 'research'})
+            debug['router'] = 'search_first_lookup'
         debug['decision'] = decision.model_dump()
         store.checkpoint(run_id, 'planning', debug)
         if decision.workflow == 'browser':
             if BrowserSettings.from_env().enabled:
+                if not (row['force_browser'] or preference is True or choice is True or continuing_browser
+                        or browser_action_requested(row['message'])):
+                    debug['suggested_decision'] = debug['decision']
+                    debug['decision'] = RouteDecision(workflow='clarification', confidence=1).model_dump()
+                    offer_browser({'reason': 'website_interaction_suggested', 'gaps': [], 'sources': []})
+                    return
                 initial_response.start(message, context, decision.workflow)
                 options = {'session': browser_session} if browser_session is not None else {}
                 execute_browser(run_id, row, message, context, debug, store, **options)
@@ -164,7 +221,7 @@ def execute(run_id, browser_session=None):
         retrieval_state = {}
         last_round_seconds = 0
 
-        def continue_in_browser(result, *, search_exhausted=False):
+        def offer_browser_for_gaps(result, *, search_exhausted=False):
             if decision.workflow != 'research':
                 return False
             handoff = browser_handoff(result, contract, search_exhausted=search_exhausted)
@@ -176,14 +233,7 @@ def execute(run_id, browser_session=None):
                                  'browser_status': 'available' if available else 'disabled_for_run' if not browser_allowed else 'unavailable'}
             if not available:
                 return False
-            debug['browser_handoff'] = handoff
-            debug['research_decision'] = debug['decision']
-            debug['decision'] = RouteDecision(workflow='browser', confidence=1).model_dump()
-            debug['stop_reason'] = 'browser_handoff'
-            initial_response.stop()
-            store.update_live_output(run_id, None)
-            options = {'session': browser_session} if browser_session is not None else {}
-            execute_browser(run_id, row, message, context + handoff_context(handoff), debug, store, **options)
+            offer_browser(handoff)
             return True
 
         for index in range(rounds):
@@ -249,7 +299,7 @@ def execute(run_id, browser_session=None):
             debug['next_action'] = next_action
             debug.setdefault('first_answer_s', round(time.monotonic() - run_started, 3))
             store.checkpoint(run_id, 'answer_ready', debug, saved_result)
-            if continue_in_browser(best_result, search_exhausted=index + 1 == rounds):
+            if offer_browser_for_gaps(best_result, search_exhausted=index + 1 == rounds):
                 return
             if result.debug.get('stop_reason') == 'no_useful_new_query':
                 debug['stop_reason'] = 'no_useful_new_query'
@@ -283,8 +333,9 @@ def execute(run_id, browser_session=None):
             history.append(ChatTurn(role='assistant', content=result.reply))
             history.append(ChatTurn(role='user', content=refinement_context(result)))
         debug.setdefault('stop_reason', 'round_limit')
-        if best_result and debug['stop_reason'] in {'round_limit', 'no_evidence_progress', 'no_useful_new_query', 'deadline', 'unconfirmable_evidence'}:
-            if continue_in_browser(best_result, search_exhausted=True):
+        if best_result and debug['stop_reason'] in {'round_limit', 'no_evidence_progress', 'no_useful_new_query', 'deadline',
+                                                  'unconfirmable_evidence', 'sufficient_reported_evidence'}:
+            if offer_browser_for_gaps(best_result, search_exhausted=True):
                 return
             recovery = debug.get('recovery', {})
             if recovery.get('browser_status') in {'disabled_for_run', 'unavailable'}:
@@ -304,17 +355,10 @@ def execute(run_id, browser_session=None):
         if (isinstance(exc, SearchUnavailable) and browser_allowed
                 and BrowserSettings.from_env().enabled):
             handoff = {'reason': 'retrieval_unavailable', 'gaps': [], 'sources': []}
-            debug['browser_handoff'] = handoff
-            debug['research_decision'] = debug.get('decision')
-            debug['decision'] = RouteDecision(workflow='browser', confidence=1).model_dump()
-            debug['stop_reason'] = 'browser_handoff'
-            initial_response.stop()
-            store.update_live_output(run_id, None)
-            options = {'session': browser_session} if browser_session is not None else {}
-            execute_browser(run_id, row, message, context + handoff_context(handoff), debug, store, **options)
+            offer_browser(handoff, 'Web search is currently unavailable.')
             return
         if isinstance(exc, ResearchDeadline) or isinstance(exc, ModelRequestTimeout) and remaining_seconds() <= 1:
-            if best_result and not debug.get('browser_handoff') and continue_in_browser(best_result, search_exhausted=True):
+            if best_result and not debug.get('browser_handoff') and offer_browser_for_gaps(best_result, search_exhausted=True):
                 return
             debug.update(stop_reason='deadline', wall_s=round(time.monotonic() - run_started, 3))
             store.checkpoint(run_id, 'answer_ready', debug)
@@ -364,7 +408,7 @@ async def serve_chat(run_id):
         await session.close()
 
 
-def supervise():
+def supervise(heartbeat=None):
     store = RunStore()
     tasks = TaskStore(store)
     with store.connect() as db:
@@ -378,6 +422,8 @@ def supervise():
     try:
         while True:
             if time.monotonic() >= next_schedule_check:
+                if heartbeat is not None:
+                    heartbeat()
                 tasks.enqueue_due()
                 next_schedule_check = time.monotonic() + 5
             for token, (process, started, budget, owner, previous_id) in list(active.items()):
@@ -420,4 +466,9 @@ def supervise():
 
 
 if __name__ == '__main__':
-    asyncio.run(serve_chat(sys.argv[1])) if len(sys.argv) > 1 else supervise()
+    if len(sys.argv) > 1:
+        asyncio.run(serve_chat(sys.argv[1]))
+    else:
+        from app.database import coordinator_lock, database_target
+        with coordinator_lock(database_target()) as heartbeat:
+            supervise(heartbeat)

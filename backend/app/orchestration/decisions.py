@@ -11,12 +11,16 @@ from pydantic import BaseModel, Field, ValidationError
 WORKFLOW_CRITERIA = {
     'chat': 'Conversation, rewriting, or stable explanation needing no external evidence.',
     'research': 'Only information is requested: external evidence, page reading, current facts or sourced comparisons. '
+                'Use normal web search first for store recommendations, product prices, local pickup options and '
+                'published stock information, including a request to find a store where the user can buy or pick up items. '
+                'These requests do not authorize purchasing and do not require an interactive browser. '
                 'Never choose research for a request to perform an action, such as ordering, buying, booking, '
                 'submitting, sending or changing an account. These are browser tasks, even when research is a prerequisite. '
                 'Preparing a booking request or appointment enquiry for review is research; it does not send anything.',
     'browser': 'The user explicitly asks to use a browser (including appending "browser"), or the task needs '
                'website interaction. This includes read-only checks of live appointment slots, a named staff member\'s '
-               'availability on a date, booking calendars, account status, and dynamic inventory, as well as signing in, '
+               'availability on a date, booking calendars, account status, and inventory controls that explicitly require '
+               'interaction. Product availability or pickup wording alone is research, not a browser task. This also includes signing in, '
                'filling or submitting forms, adding items to or modifying a shopping cart or basket, ordering, buying, '
                'checking out, booking, cancelling or rescheduling, sending messages, uploading or downloading files, '
                'and creating or changing accounts, subscriptions or settings. '
@@ -38,6 +42,10 @@ def browser_preference(message: str) -> bool | None:
     """Recognize an explicit tool choice in the current user message only."""
     text = message.strip().casefold()
     if re.search(r"\b(?:do not|don't|don’t|never|without|avoid|no)\s+(?:(?:use|using|open|opening)\s+)?(?:a\s+|the\s+)?(?:web\s+)?browser\b", text):
+        return False
+    if re.search(r'\b(?:rather than|instead of)\s+(?:(?:use|using|open|opening)\s+)?(?:a\s+|the\s+)?(?:web\s+)?browser\b', text):
+        return False
+    if re.search(r'\b(?:web search only|only (?:use|using) (?:normal |regular )?web search)\b', text):
         return False
     if re.match(r'^(?:how (?:do|can|should) i|what (?:is|are)|explain (?:how|what))\b', text):
         return None
@@ -138,6 +146,18 @@ def uncertain_workflow(message: str) -> tuple[Literal['research', 'browser'], st
                 r'\b(?:staff|appointment|calendar|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\b\d{4}-\d{2}-\d{2}\b', text):
             return 'browser', 'dated_availability'
     return 'research', 'search_first'
+
+
+def research_lookup_requested(message: str) -> bool:
+    """Keep ordinary shopping research out of an interactive browser workflow."""
+    if browser_preference(message) is True or uncertain_workflow(message)[0] == 'browser':
+        return False
+    text = re.sub(r'```[\s\S]*?```|`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’|(?<!\w)\x27[^\x27\n]+\x27(?!\w)', ' quoted_content ', message).strip().casefold()
+    text = re.sub(r'^(?:please\s+)?(?:(?:can|could|would|will) you\s+)?(?:please\s+)?', '', text)
+    informational = re.match(r'^(?:find|compare|research|search|look for|look up|check|show|where (?:can|could|to)|which (?:store|shop|retailer))\b', text)
+    retail = re.search(r'\b(?:stores?|shops?|retailers?|products?|prices?|pricing|in stock|stock levels?|pickup|pick up|click.and.collect)\b', text)
+    interactive = re.search(r'\b(?:booking calendar|appointment slots?|account|sign in|log in|checkout|inventory (?:controls?|dashboard))\b', text)
+    return bool(informational and retail and not interactive)
 
 
 class RouteDecision(BaseModel):

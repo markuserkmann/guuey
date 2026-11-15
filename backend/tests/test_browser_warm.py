@@ -23,7 +23,7 @@ def warm_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='browser', confidence=1))
     runs = RunStore()
     chat = ChatStore().create('owner')['id']
-    first = runs.create('owner', chat, 'first', 'Open the shop', 'auto')['id']
+    first = runs.create('owner', chat, 'first', 'Open the shop in a browser', 'auto')['id']
     runs.claim()
     pages, closed, guards = [], [], []
 

@@ -4,7 +4,7 @@ import pytest
 
 from app import worker
 from app.browser.store import BrowserStore
-from app.orchestration.browser_handoff import browser_handoff, unresolved_live_requirements
+from app.orchestration.browser_handoff import BROWSER_CHOICE_QUESTION, browser_handoff, unresolved_live_requirements
 from app.orchestration.contracts import ResearchContract, Requirement
 from app.orchestration.decisions import DecisionUncertain, DecisionUnavailable, RouteDecision, browser_action_requested, browser_preference, uncertain_workflow
 from app.orchestration.grounding import GroundedAnswer
@@ -18,6 +18,7 @@ from app.task_context import dated_request
 
 REQUEST = 'Can you check availability of Ljudmilla in avancia eeden on upcoming tuesday'
 URL = 'https://avancia.ee/eedeni-keskus/online-broneering/'
+MOVING_SUPPLIES = 'Find a store in Matinkylä, Espoo, where I can pick up 10 moving boxes and packing tape for under €40.'
 
 
 @pytest.mark.parametrize('message,expected', [
@@ -209,23 +210,105 @@ def test_action_request_respects_explicit_browser_opt_out(tmp_path, monkeypatch)
     assert runs.get('owner', run['id'])['debug']['router'] == 'browser_opt_out'
 
 
-def test_research_hands_unanswered_availability_to_browser_once(tmp_path, monkeypatch):
+def test_research_offers_browser_for_unanswered_availability(tmp_path, monkeypatch):
     runs, run, calls = setup_run(tmp_path, monkeypatch)
     monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='research', confidence=1))
     monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: availability_result()[1])
-    session = object()
-    worker.execute(run['id'], browser_session=session)
+    worker.execute(run['id'])
     saved = runs.get('owner', run['id'])
+    assert not calls
+    assert saved['phase'] == 'awaiting_browser_choice' and saved['status'] == 'partial'
+    assert saved['result']['next_action'] == {'kind': 'browser_opt_in', 'text': BROWSER_CHOICE_QUESTION}
+    assert 'Ljudmilla' in saved['result']['reply']
+    assert saved['result']['reply'].endswith(BROWSER_CHOICE_QUESTION)
+    assert saved['result']['sources'][0]['url'] == URL
+    assert saved['debug']['browser_offer']['reason'] == 'unresolved_live_availability'
+    assert saved['debug']['decision']['workflow'] == 'research'
+    assert saved['deadline_at'] is None and saved['live_output'] is None
+    continuation = runs.create('owner', run['chat_id'], 'continue', REQUEST, 'deep', run['id'])
+    assert continuation['parent_id'] == run['id']
+
+
+@pytest.mark.parametrize('answer', ['yes', 'Yes, please use the browser.', 'yes please use the browser',
+                                    'Yes, use the browser to finish the previous search.'])
+def test_browser_opt_in_restores_original_request_and_research(tmp_path, monkeypatch, answer):
+    runs, run, calls = setup_run(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='research', confidence=1))
+    monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: availability_result()[1])
+    worker.execute(run['id'])
+    offered = runs.get('owner', run['id'])
+    assert not calls
+    followup = runs.create('owner', run['chat_id'], 'choice', answer, 'auto', timezone='Europe/Tallinn',
+                          force_browser=answer == 'Yes, use the browser to finish the previous search.')
+    with runs.connect() as db:
+        db.execute('UPDATE runs SET created_at=? WHERE id=?', ('2026-11-30T12:00:00+00:00', followup['id']))
+    runs.claim()
+    monkeypatch.setattr(worker, 'decide', lambda *args: pytest.fail('Browser opt-in already specifies the workflow'))
+    monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: pytest.fail('Accepted research must continue in the browser'))
+    session = object()
+    worker.execute(followup['id'], browser_session=session)
+    saved = runs.get('owner', followup['id'])
     assert len(calls) == 1
     assert calls[0]['options']['session'] is session
+    assert calls[0]['message'] == offered['debug']['browser_offer']['request']
+    assert '2026-11-17' in calls[0]['message'] and '2026-12-01' not in calls[0]['message']
     assert URL in calls[0]['context'] and 'does not authorize booking' in calls[0]['context']
-    assert '2026-11-17' in calls[0]['message']
-    assert saved['phase'] == 'browser_done' and saved['result']['reply'] == 'Calendar checked'
-    assert saved['debug']['research_decision']['workflow'] == 'research'
+    assert 'Ljudmilla works at Avancia Eeden.' in calls[0]['context']
+    assert saved['debug']['router'] == 'browser_opt_in'
+    assert saved['debug']['date_context'] == offered['debug']['date_context']
     assert saved['debug']['decision']['workflow'] == 'browser'
-    assert saved['deadline_at'] is not None and saved['live_output'] is None
-    with pytest.raises(ValueError, match='cannot be continued|Browser runs'):
-        runs.create('owner', run['chat_id'], 'continue', REQUEST, 'deep', run['id'])
+    assert saved['phase'] == 'browser_done' and saved['result']['reply'] == 'Calendar checked'
+
+
+@pytest.mark.parametrize('answer', ['no', 'Keep the web results.'])
+def test_declining_browser_preserves_web_results(tmp_path, monkeypatch, answer):
+    runs, run, calls = setup_run(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='research', confidence=1))
+    monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: availability_result()[1])
+    worker.execute(run['id'])
+    offered = runs.get('owner', run['id'])
+    followup = runs.create('owner', run['chat_id'], 'choice', answer, 'auto')
+    runs.claim()
+    monkeypatch.setattr(worker, 'decide', lambda *args: pytest.fail('Declining should not need classification'))
+    monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: pytest.fail('Declining should preserve the existing answer'))
+    worker.execute(followup['id'])
+    saved = runs.get('owner', followup['id'])
+    assert not calls
+    assert saved['debug']['stop_reason'] == 'browser_declined'
+    assert saved['status'] == 'completed'
+    assert saved['result']['sources'] == offered['result']['sources']
+    assert saved['result']['reply'].startswith(offered['result']['reply'].removesuffix('\n\n' + BROWSER_CHOICE_QUESTION))
+    assert BROWSER_CHOICE_QUESTION not in saved['result']['reply']
+    assert not saved['result'].get('next_action')
+    later = runs.create('owner', run['chat_id'], 'later', 'yes', 'auto')
+    runs.claim()
+    monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='chat', confidence=1))
+    monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: TurnResult(reply='Acknowledged', sources=[], debug={}))
+    worker.execute(later['id'])
+    assert not calls
+    assert runs.get('owner', later['id'])['debug']['router'] != 'browser_opt_in'
+
+
+def test_unrelated_followup_and_stale_yes_do_not_accept_old_browser_offer(tmp_path, monkeypatch):
+    runs, run, calls = setup_run(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='research', confidence=1))
+    monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: availability_result()[1])
+    worker.execute(run['id'])
+    researched = []
+    def answer(message, *args, **kwargs):
+        researched.append(message)
+        return TurnResult(reply='New conversation', sources=[], debug={'has_gaps': False})
+    monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='chat', confidence=1))
+    monkeypatch.setattr(worker, 'run_turn', answer)
+    for request_id, message in [('unrelated', 'Explain how rainbows form'), ('stale-choice', 'yes')]:
+        followup = runs.create('owner', run['chat_id'], request_id, message, 'auto')
+        runs.claim()
+        worker.execute(followup['id'])
+        saved = runs.get('owner', followup['id'])
+        assert saved['debug']['router'] != 'browser_opt_in'
+        assert not saved['result'].get('next_action')
+        assert message in researched[-1]
+    assert len(researched) == 2 and not calls
 
 
 @pytest.mark.parametrize('enabled,opt_out,artifact', [(False, False, 'answer'), (True, True, 'answer'),
@@ -242,19 +325,22 @@ def test_fallback_respects_disabled_browser_opt_out_and_drafts(tmp_path, monkeyp
         assert saved['status'] == 'partial'
 
 
-def test_failed_search_falls_back_to_browser(tmp_path, monkeypatch):
+def test_failed_search_offers_browser_without_launching(tmp_path, monkeypatch):
     runs, run, calls = setup_run(tmp_path, monkeypatch)
     monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='research', confidence=1))
     def unavailable(*args, **kwargs):
         raise SearchUnavailable('Search unavailable')
     monkeypatch.setattr(worker, 'run_turn', unavailable)
     worker.execute(run['id'])
-    assert len(calls) == 1
-    assert runs.get('owner', run['id'])['debug']['browser_handoff']['reason'] == 'retrieval_unavailable'
+    assert not calls
+    saved = runs.get('owner', run['id'])
+    assert saved['debug']['browser_offer']['reason'] == 'retrieval_unavailable'
+    assert saved['result']['next_action']['kind'] == 'browser_opt_in'
+    assert 'Web search is currently unavailable.' in saved['result']['reply']
 
 
-@pytest.mark.parametrize('message', [REQUEST, REQUEST + ' browser', 'Add a laptop to my basket'])
-def test_unchecked_browser_allows_automatic_and_explicit_routing(tmp_path, monkeypatch, message):
+@pytest.mark.parametrize('message', [REQUEST + ' browser', 'Add a laptop to my basket'])
+def test_explicit_browser_and_actions_do_not_need_extra_opt_in(tmp_path, monkeypatch, message):
     runs, run, calls = setup_run(tmp_path, monkeypatch, message)
     monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='browser', confidence=1))
     monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: pytest.fail('Must route directly to browser'))
@@ -263,6 +349,39 @@ def test_unchecked_browser_allows_automatic_and_explicit_routing(tmp_path, monke
     assert len(calls) == 1
     assert saved['debug']['decision']['workflow'] == 'browser'
     assert saved['phase'] == 'browser_done'
+
+
+def test_inferred_browser_requires_opt_in(tmp_path, monkeypatch):
+    runs, run, calls = setup_run(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='browser', confidence=1))
+    monkeypatch.setattr(worker, 'run_turn', lambda *args, **kwargs: pytest.fail('Should offer the suggested browser workflow'))
+    worker.execute(run['id'])
+    saved = runs.get('owner', run['id'])
+    assert not calls
+    assert saved['debug']['suggested_decision']['workflow'] == 'browser'
+    assert saved['debug']['decision']['workflow'] == 'clarification'
+    assert saved['phase'] == 'awaiting_browser_choice'
+    assert saved['result']['next_action']['kind'] == 'browser_opt_in'
+    assert saved['result']['reply'] == BROWSER_CHOICE_QUESTION
+
+
+def test_matinkyla_store_lookup_uses_web_search_despite_confident_browser_classification(tmp_path, monkeypatch):
+    runs, run, calls = setup_run(tmp_path, monkeypatch, MOVING_SUPPLIES)
+    monkeypatch.setattr(worker, 'decide', lambda *args: RouteDecision(workflow='browser', confidence=1))
+    searches = []
+    def search(message, *args, **kwargs):
+        searches.append((message, kwargs['search_requested']))
+        return TurnResult(reply='Store information from web search', sources=[], debug={'has_gaps': False})
+    monkeypatch.setattr(worker, 'run_turn', search)
+    worker.execute(run['id'])
+    saved = runs.get('owner', run['id'])
+    assert not calls
+    assert len(searches) == 1 and searches[0][1] is True
+    assert MOVING_SUPPLIES in searches[0][0]
+    assert saved['debug']['router'] == 'search_first_lookup'
+    assert saved['debug']['decision']['workflow'] == 'research'
+    assert saved['result']['reply'] == 'Store information from web search'
+    assert saved['phase'] == 'finished'
 
 
 def test_checked_browser_forces_browser_without_classification(tmp_path, monkeypatch):
@@ -337,10 +456,15 @@ def test_uncertainty_uses_local_rules_without_an_extra_model_call(tmp_path, monk
     worker.execute(run['id'])
     saved = runs.get('owner', run['id'])
     assert saved['debug']['router'] == 'fast_rules'
-    assert saved['debug']['decision']['workflow'] == expected
+    assert saved['debug']['routing_check']['workflow'] == expected
     assert saved['debug']['routing_check']['model_decision']['confidence'] == 0.5
     assert len(model_calls) == int(fallback)
-    assert len(calls) == int(expected == 'browser')
+    assert not calls
+    if expected == 'browser':
+        assert saved['debug']['suggested_decision']['workflow'] == 'browser'
+        assert saved['result']['next_action']['kind'] == 'browser_opt_in'
+    else:
+        assert saved['debug']['decision']['workflow'] == 'research'
 
 
 def test_upcoming_weekday_uses_frozen_request_date_and_timezone():

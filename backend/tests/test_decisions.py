@@ -1,7 +1,50 @@
 import httpx
 import pytest
 
-from app.orchestration.decisions import DecisionUnavailable, DecisionUncertain, decide
+from app.orchestration.decisions import (
+    DecisionUnavailable, DecisionUncertain, browser_preference, decide, research_lookup_requested,
+)
+
+
+MOVING_SUPPLIES = 'Find a store in Matinkylä, Espoo, where I can pick up 10 moving boxes and packing tape for under €40.'
+
+
+@pytest.mark.parametrize('message', [
+    MOVING_SUPPLIES,
+    'Can you find product prices and local pickup options?',
+    'Check which shops have moving boxes in stock today',
+    'Compare prices for packing supplies',
+    'Where can I pick up moving boxes?',
+    'Find a store where I can buy moving boxes',
+    'Find a store selling "moving boxes" near me',
+])
+def test_shopping_information_requests_use_normal_search(message):
+    assert research_lookup_requested(message)
+
+
+@pytest.mark.parametrize('message', [
+    MOVING_SUPPLIES + ' Use the browser.',
+    'Find product prices and add the cheapest to my cart',
+    'Find a store and buy 10 moving boxes',
+    'Check appointment slots at the shop',
+    'Check staff availability at the shop tomorrow',
+    'Check my retailer account',
+    'Check inventory controls in the store dashboard',
+    'Read this text: "find a store with moving boxes"',
+    'Explain product pricing',
+])
+def test_shopping_search_guard_preserves_actions_and_explicit_browser(message):
+    assert not research_lookup_requested(message)
+
+
+@pytest.mark.parametrize('message', [
+    'Find moving boxes using normal web search rather than the browser',
+    'Use web search instead of opening a browser',
+    'Find moving boxes, web search only',
+    'Only use normal web search to find moving boxes',
+])
+def test_web_search_preference_disables_browser(message):
+    assert browser_preference(message) is False
 
 
 @pytest.mark.parametrize('confidence,accepted', [(0.95, True), (0.5, False)])
