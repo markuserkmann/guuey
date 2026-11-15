@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 class FakeControl:
     def __init__(self, page, name, role='button', **attrs):
         self.page, self.name, self.role = page, name, role
-        self.attrs = {'tag': 'button', 'type': 'button', 'autocomplete': '', 'name': '', 'id': '',
+        self.attrs = {'tag': 'select' if role == 'combobox' else 'button', 'type': 'button', 'autocomplete': '', 'name': '', 'id': '',
                       'placeholder': '', 'label': name, 'formAction': '', 'href': '', **attrs}
         self.value = ''
         self.visible, self.enabled = True, True
@@ -21,8 +21,8 @@ class FakeControl:
     async def aria_snapshot(self, **kwargs):
         return f'- {self.role} {json.dumps(self.name)}'
 
-    async def evaluate(self, script):
-        return dict(self.attrs)
+    async def evaluate(self, script, **kwargs):
+        return {**self.attrs, 'role': self.role, 'label': self.name, 'visible': self.visible, 'enabled': self.enabled}
 
     async def fill(self, value):
         self.value = value

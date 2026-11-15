@@ -173,12 +173,17 @@ def test_card_fields_and_password_literal_are_refused(deps):
 
 
 def test_saved_session_restores_cookies_and_scoped_storage(deps):
+    deps.page.text += '\n- link "Menu":\n  - /url: /menu'
     state = {'cookies': [{'name': 'session', 'value': 'private-session', 'domain': '.example.com'}],
              'origins': [{'origin': 'https://shop.example.com', 'localStorage': [{'name': 'token', 'value': 'private-token'}]}]}
     deps.store.save_session(deps.owner, 'example.com', state)
     async def flow():
-        await deps.perform('open', url='https://shop.example.com/account')
-        await deps.perform('open', url='https://shop.example.com/menu')
+        first = await deps.perform('open', url='https://shop.example.com/account')
+        second = await deps.perform('open', url='https://shop.example.com/menu')
+        assert 'Saved login state was restored for example.com' in first
+        assert 'Saved login state was restored for example.com' in second
+        assert 'does not prove' in first
+        assert deps.restored_login_site == 'example.com'
     asyncio.run(flow())
     deps.page.context.add_cookies.assert_awaited_once()
     script = deps.page.context.add_init_script.await_args.args[0]

@@ -1,5 +1,6 @@
 """Dedicated local supervisor with isolated, deadline-bounded run processes."""
 import json
+import asyncio
 import subprocess
 import sys
 import time
@@ -14,7 +15,8 @@ from pydantic_ai.models.google import GoogleModel
 from app.chat import api_key, model_name
 from app.attachments import TextAttachment, attachment_context
 from app.model_calls import call_model, error_details, google_provider, model_call_events, model_output_events
-from app.orchestration.decisions import DecisionUnavailable, RouteDecision, decide
+from app.orchestration.decisions import DecisionUnavailable, RouteDecision, decide, browser_preference, browser_action_requested, ROUTING_INSTRUCTIONS
+from app.orchestration.browser_handoff import browser_handoff, handoff_context
 from app.orchestration.orchestrator import RefinementComplete, run_turn
 from app.orchestration.contracts import ResearchContract
 from app.orchestration.refinement import finish_research_result, refinement_context, replacement_gap_queries
@@ -26,9 +28,10 @@ from app.research import SearchUnavailable
 from app.research_modes import RESEARCH_LIMITS, research_mode, research_deadline, ResearchDeadline, remaining_seconds
 from app.browser.config import BrowserSettings
 from app.browser.run import execute_browser
+from app.browser.warm import WarmBrowser
 
 
-def execute(run_id):
+def execute(run_id, browser_session=None):
     run_started = time.monotonic()
     store = RunStore()
     with store.connect() as db:
@@ -79,30 +82,43 @@ def execute(run_id):
                     'For a follow-up change only explicitly revised requirements; for an unrelated new task discard these requirements:\n'
                     + json.dumps(saved_contract, ensure_ascii=False)))
         context = '\n'.join(f'{item.role}: {attachment_context(item.content, item.attachments)}' for item in history)[-16000:]
-        try:
-            decision = decide(message, context)
-            debug['router'] = 'decisions'
-        except DecisionUnavailable:
-            debug['router'] = 'fallback'
-            if api_key():
-                agent = Agent(GoogleModel(model_name(), provider=google_provider(api_key())), output_type=RouteDecision,
-                              instructions='Classify as chat, research, browser, or clarification. Browser covers signing in to websites, filling and submitting forms, and ordering, booking or buying on the user\'s behalf. Research requires external evidence. Preparing a booking request or appointment enquiry for review is research. Recommend deep for multiple items or complex constraints. Do not perform the task.')
-                try:
-                    response = call_model(agent, context + '\nCurrent request: ' + message, stage='routing', model_settings={'max_tokens': 256})
-                    decision = response.output
-                    debug['routing_usage'] = asdict(response.usage)
-                except ModelAPIError:
-                    raise
-                except Exception:
-                    decision = RouteDecision(workflow='research', confidence=0, deep_recommended=False)
-                    debug['router'] = 'degraded'
-            else:
-                decision = RouteDecision(workflow='chat', confidence=0)
+        preference = browser_preference(row['message'])
+        if preference is True:
+            decision = RouteDecision(workflow='browser', confidence=1)
+            debug['router'] = 'explicit_browser'
+        elif preference is not False and browser_action_requested(row['message']):
+            decision = RouteDecision(workflow='browser', confidence=1)
+            debug['router'] = 'browser_action'
+        else:
+            try:
+                decision = decide(message, context)
+                debug['router'] = 'decisions'
+            except DecisionUnavailable:
+                debug['router'] = 'fallback'
+                if api_key():
+                    agent = Agent(GoogleModel(model_name(), provider=google_provider(api_key())), output_type=RouteDecision,
+                                  instructions=ROUTING_INSTRUCTIONS)
+                    try:
+                        response = call_model(agent, context + '\nCurrent request: ' + message, stage='routing', model_settings={'max_tokens': 256})
+                        decision = response.output
+                        debug['routing_usage'] = asdict(response.usage)
+                    except ModelAPIError:
+                        raise
+                    except Exception as exc:
+                        decision = RouteDecision(workflow='research', confidence=0, deep_recommended=False)
+                        debug['router'] = 'degraded'
+                        debug['routing_error'] = error_details(exc)
+                else:
+                    decision = RouteDecision(workflow='chat', confidence=0)
+        if preference is False and decision.workflow == 'browser':
+            decision = RouteDecision(workflow='research', confidence=1)
+            debug['router'] = 'browser_opt_out'
         debug['decision'] = decision.model_dump()
         store.checkpoint(run_id, 'planning', debug)
         if decision.workflow == 'browser':
             if BrowserSettings.from_env().enabled:
-                execute_browser(run_id, row, message, context, debug, store)
+                options = {'session': browser_session} if browser_session is not None else {}
+                execute_browser(run_id, row, message, context, debug, store, **options)
                 return
             store.checkpoint(run_id, 'unsupported', debug, {'reply': 'This request needs browser interaction, which is not available yet.', 'sources': []})
             store.finish(run_id, 'partial', 'browser_unavailable')
@@ -182,6 +198,16 @@ def execute(run_id):
             debug['next_action'] = next_action
             debug.setdefault('first_answer_s', round(time.monotonic() - run_started, 3))
             store.checkpoint(run_id, 'answer_ready', debug, saved_result)
+            handoff = browser_handoff(best_result, contract) if decision.workflow == 'research' else None
+            if handoff and preference is not False and BrowserSettings.from_env().enabled:
+                debug['browser_handoff'] = handoff
+                debug['research_decision'] = debug['decision']
+                debug['decision'] = RouteDecision(workflow='browser', confidence=1).model_dump()
+                debug['stop_reason'] = 'browser_handoff'
+                store.update_live_output(run_id, None)
+                options = {'session': browser_session} if browser_session is not None else {}
+                execute_browser(run_id, row, message, context + handoff_context(handoff), debug, store, **options)
+                return
             if result.debug.get('stop_reason') == 'no_useful_new_query':
                 debug['stop_reason'] = 'no_useful_new_query'
                 break
@@ -219,6 +245,17 @@ def execute(run_id):
         partial = best_result.debug.get('has_gaps', False)
         store.finish(run_id, 'partial' if partial else 'completed', 'finished')
     except Exception as exc:
+        if (isinstance(exc, SearchUnavailable) and preference is not False
+                and BrowserSettings.from_env().enabled):
+            handoff = {'reason': 'retrieval_unavailable', 'gaps': [], 'sources': []}
+            debug['browser_handoff'] = handoff
+            debug['research_decision'] = debug.get('decision')
+            debug['decision'] = RouteDecision(workflow='browser', confidence=1).model_dump()
+            debug['stop_reason'] = 'browser_handoff'
+            store.update_live_output(run_id, None)
+            options = {'session': browser_session} if browser_session is not None else {}
+            execute_browser(run_id, row, message, context + handoff_context(handoff), debug, store, **options)
+            return
         if isinstance(exc, ResearchDeadline) or isinstance(exc, ModelRequestTimeout) and remaining_seconds() <= 1:
             debug.update(stop_reason='deadline', wall_s=round(time.monotonic() - run_started, 3))
             store.checkpoint(run_id, 'answer_ready', debug)
@@ -243,37 +280,73 @@ def execute(run_id):
         model_output_events.reset(output_observer)
 
 
+async def serve_chat(run_id):
+    store = RunStore()
+    row = store.worker_run(run_id)
+    owner, chat_id = row['owner'], row['chat_id']
+    session = WarmBrowser(asyncio.get_running_loop(), run_id)
+    try:
+        while True:
+            await asyncio.to_thread(execute, row['id'], session)
+            expiry = store.warm_browser_expiry(owner, chat_id, session.token)
+            if not expiry or not session.valid():
+                break
+            while time.time() < expiry and session.valid():
+                next_row = store.claim_warm_browser(owner, chat_id, session.token, max_running=2)
+                if next_row:
+                    row = next_row
+                    break
+                await asyncio.sleep(0.25)
+            else:
+                break
+    finally:
+        store.release_warm_browser(owner, chat_id, session.token)
+        await session.close()
+
+
 def supervise():
     store = RunStore()
     with store.connect() as db:
         interrupted = [row['id'] for row in db.execute("SELECT id FROM runs WHERE status='running'")]
+        db.execute('DELETE FROM browser_warm_reservations')
     for run_id in interrupted:
         store.finish(run_id, 'partial', 'worker_interrupted')
     active = {}
     stopping = {}
     try:
         while True:
-            for run_id, (process, started, budget, owner) in list(active.items()):
-                run = store.get(owner, run_id)
+            for token, (process, started, budget, owner, previous_id) in list(active.items()):
+                run = store.worker_run(token)
+                run_id = run['id']
+                if run_id != previous_id:
+                    started, budget = time.monotonic(), RESEARCH_LIMITS[run['mode']][1]
+                    active[token] = (process, started, budget, owner, run_id)
+                    stopping.pop(token, None)
                 expired = (time.time() >= run['deadline_at'] if run['deadline_at'] is not None
                            else time.monotonic() - started >= budget)
-                if expired or run['status'] == 'cancelled':
+                if (expired and run['status'] == 'running') or run['status'] == 'cancelled' or token in stopping:
                     if run['deadline_at'] is not None:
-                        stopping.setdefault(run_id, time.monotonic())
+                        stopping.setdefault(token, time.monotonic())
                         store.finish(run_id, 'partial' if run['result'] else 'failed', 'budget_exhausted')
-                    if run['deadline_at'] is None or time.monotonic() - stopping[run_id] >= 12:
+                    if run['deadline_at'] is None or time.monotonic() - stopping[token] >= 12:
                         process.kill()
                         process.wait()
                         store.finish(run_id, 'partial' if run['result'] else 'failed', 'budget_exhausted')
+                elif run['status'] != 'running':
+                    expiry = store.warm_browser_expiry(owner, run['chat_id'], token)
+                    if expiry is None or expiry <= time.time():
+                        stopping.setdefault(token, time.monotonic())
                 if process.poll() is not None:
+                    run = store.worker_run(token)
+                    run_id = run['id']
                     store.finish(run_id, 'failed', 'worker_exit')
-                    del active[run_id]
-                    stopping.pop(run_id, None)
-            if len(active) < 2:
-                row = store.claim()
-                if row:
-                    process = subprocess.Popen([sys.executable, '-m', 'app.worker', row['id']])
-                    active[row['id']] = (process, time.monotonic(), RESEARCH_LIMITS[row['mode']][1], row['owner'])
+                    store.release_warm_browser(owner, run['chat_id'], token)
+                    del active[token]
+                    stopping.pop(token, None)
+            row = store.claim(max_running=2)
+            if row:
+                process = subprocess.Popen([sys.executable, '-m', 'app.worker', row['id']])
+                active[row['id']] = (process, time.monotonic(), RESEARCH_LIMITS[row['mode']][1], row['owner'], row['id'])
             time.sleep(0.25)
     finally:
         for process, *_ in active.values():
@@ -282,4 +355,4 @@ def supervise():
 
 
 if __name__ == '__main__':
-    execute(sys.argv[1]) if len(sys.argv) > 1 else supervise()
+    asyncio.run(serve_chat(sys.argv[1])) if len(sys.argv) > 1 else supervise()

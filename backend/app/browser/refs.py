@@ -1,0 +1,2 @@
+ELEMENT_REF = r'(?:f[0-9]+)?e[1-9][0-9]*'
+ELEMENT_REF_PATTERN = rf'^{ELEMENT_REF}$'

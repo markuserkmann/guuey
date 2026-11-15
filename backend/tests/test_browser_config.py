@@ -9,7 +9,7 @@ from app.secrets import SECRET_ENV_NAMES, redact
 
 
 def test_browser_defaults_and_secrets_not_in_repr(monkeypatch):
-    for name in ('BROWSER_ENABLED', 'BROWSER_BACKEND', 'BROWSER_MODEL', 'BROWSER_DEADLINE_S'):
+    for name in ('BROWSER_ENABLED', 'BROWSER_BACKEND', 'BROWSER_MODEL', 'BROWSER_DEADLINE_S', 'BROWSER_IDLE_TIMEOUT_S'):
         monkeypatch.setenv(name, '')
     monkeypatch.setenv('OXY_AB_PASSWORD', 'private-password')
     monkeypatch.setenv('BROWSER_SESSION_KEY', 'ab' * 32)
@@ -17,6 +17,7 @@ def test_browser_defaults_and_secrets_not_in_repr(monkeypatch):
     assert settings.enabled is False
     assert settings.backend == 'oxylabs'
     assert settings.deadline_s == 1800
+    assert settings.idle_timeout_s == 60
     assert settings.saved_logins_enabled
     assert 'private-password' not in repr(settings)
     assert 'ab' * 32 not in repr(settings)
@@ -38,7 +39,7 @@ def test_browser_reasoning_limits_can_be_overridden(monkeypatch):
     ('BROWSER_REQUEST_TIMEOUT_S', 'nan'), ('BROWSER_FINAL_ACTION_PATTERNS', '['),
     ('BROWSER_THINKING_LEVEL', 'unknown'), ('BROWSER_TOOL_RETRIES', '0'),
     ('BROWSER_TOOL_RETRIES', '21'), ('BROWSER_MODEL_MAX_TOKENS', '65537'),
-    ('BROWSER_MODEL_TIMEOUT_S', '601')])
+    ('BROWSER_MODEL_TIMEOUT_S', '601'), ('BROWSER_IDLE_TIMEOUT_S', '0'), ('BROWSER_IDLE_TIMEOUT_S', '301')])
 def test_invalid_settings_fail_without_echoing_values(monkeypatch, name, value):
     monkeypatch.setenv(name, value)
     with pytest.raises(ValueError, match=name):

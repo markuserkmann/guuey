@@ -39,6 +39,7 @@ class BrowserSettings:
     session_key: str = field(default='', repr=False)
     headless: bool = True
     deadline_s: int = 1800
+    idle_timeout_s: int = 60
     max_steps: int = 120
     request_timeout_s: int = 900
     tool_retries: int = 5
@@ -71,6 +72,7 @@ class BrowserSettings:
             country=country, model=os.getenv('BROWSER_MODEL', '').strip() or 'gemini-3.5-flash-lite',
             session_key=os.getenv('BROWSER_SESSION_KEY', ''), headless=_boolean('BROWSER_HEADLESS', True),
             deadline_s=_positive_int('BROWSER_DEADLINE_S', 1800, 3540),
+            idle_timeout_s=_positive_int('BROWSER_IDLE_TIMEOUT_S', 60, 300),
             max_steps=_positive_int('BROWSER_MAX_STEPS', 120, 1000),
             request_timeout_s=_positive_int('BROWSER_REQUEST_TIMEOUT_S', 900, 3540),
             tool_retries=_positive_int('BROWSER_TOOL_RETRIES', 5, 20),

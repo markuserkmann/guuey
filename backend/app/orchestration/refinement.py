@@ -8,6 +8,7 @@ from app.orchestration.grounding import (
     links, matching_evidence, monetary_values, labelled_current_price, plain, render_answer,
 )
 from app.research import live_source, source_domain
+from app.orchestration.browser_handoff import unresolved_live_requirements
 
 
 def candidate_key(finding, contract):
@@ -421,7 +422,8 @@ def prepared_action(contract: ResearchContract, answer: GroundedAnswer, sources:
     if contract.clarification_question:
         return {"kind": "clarification", "text": contract.clarification_question, "gaps": gaps}
     if answer.knowledge and answer.knowledge.points:
-        return {"kind": "none", "gaps": [], "external_action": False}
+        live_gaps = unresolved_live_requirements(contract, answer, sources)
+        return {"kind": "research" if live_gaps else "none", "gaps": live_gaps, "external_action": False}
     if contract.artifact in {"checklist", "message_draft", "plan", "form_draft"}:
         facts = []
         for finding in answer.findings:
@@ -469,11 +471,16 @@ def finish_research_result(result, contract, previous_output=None):
     coverage["discovery_leads"] = leads
     coverage["gaps"].extend(leads)
     action = prepared_action(contract, answer, result.sources)
+    live_gaps = unresolved_live_requirements(contract, answer, result.sources)
+    for gap in live_gaps:
+        if not any((old.get('candidate'), old.get('requirement_id')) ==
+                   (gap['candidate'], gap['requirement_id']) for old in coverage['gaps']):
+            coverage['gaps'].append(gap)
     if contract.missing_information:
         reply += "\n\nStill needed: " + "; ".join(plain(value) for value in contract.missing_information) + "."
     result.reply = reply
     result.debug.update({"output": answer.model_dump_json(), "coverage": coverage, "validation_issues": issues,
-                         "next_action": action, "has_gaps": bool(issues or missing_preferences or action["kind"] == "clarification"
+                         "next_action": action, "has_gaps": bool(issues or missing_preferences or live_gaps or action["kind"] == "clarification"
                          or coverage["verified"] < coverage["retained"]
                          or (coverage["requested"] and coverage["retained"] < coverage["requested"])
                          or (not coverage["retained"] and not answer.response and not knowledge_points))})

@@ -105,3 +105,54 @@ def test_cancelled_browser_gets_cleanup_window_before_forced_stop(monkeypatch, t
     monkeypatch.setattr(worker.time, 'sleep', step)
     with pytest.raises(KeyboardInterrupt):
         worker.supervise()
+
+
+@pytest.mark.parametrize('worker_crash', [False, True])
+def test_supervisor_tracks_warm_followup_and_releases_dead_worker(monkeypatch, tmp_path, worker_crash):
+    monkeypatch.setenv('CHAT_DATABASE_PATH', str(tmp_path / 'warm-supervisor.sqlite3'))
+    runs = RunStore()
+    chat = ChatStore().create('owner')['id']
+    first = runs.create('owner', chat, 'first', 'Open page', 'auto')['id']
+    clock, loops, killed, followup = [0], [], [], []
+    exited = [False]
+    process = SimpleNamespace(kill=lambda: killed.append(True), wait=lambda: None,
+                              poll=lambda: 1 if exited[0] else None)
+    monkeypatch.setattr(worker.subprocess, 'Popen', lambda *args: process)
+    monkeypatch.setattr(worker.time, 'time', lambda: 1000)
+    monkeypatch.setattr(worker.time, 'monotonic', lambda: clock[0])
+
+    def step(_):
+        loops.append(True)
+        if len(loops) == 1:
+            with runs.connect() as db:
+                db.execute('UPDATE runs SET deadline_at=999 WHERE id=?', (first,))
+            runs.checkpoint(first, 'browser_done', {}, {'reply': 'Done', 'sources': []})
+            runs.finish(first, 'completed', 'browser_done', warm_token=first)
+            clock[0] = 1000
+        elif len(loops) == 2:
+            assert not killed
+            second = runs.create('owner', chat, 'second', 'Continue', 'fast')['id']
+            assert runs.claim_warm_browser('owner', chat, first)['id'] == second
+            followup.append(second)
+            with runs.connect() as db:
+                db.execute('UPDATE runs SET deadline_at=2000 WHERE id=?', (second,))
+            exited[0] = worker_crash
+        elif len(loops) == 3:
+            assert not killed
+            if worker_crash:
+                assert runs.get('owner', followup[0])['phase'] == 'worker_exit'
+                assert runs.warm_browser_expiry('owner', chat, first) is None
+                raise KeyboardInterrupt
+            runs.finish(followup[0], 'cancelled', 'cancelled')
+        elif len(loops) == 4:
+            assert not killed
+            clock[0] += 13
+        elif len(loops) == 5:
+            assert killed == [True]
+            assert runs.get('owner', first)['status'] == 'completed'
+            assert runs.get('owner', followup[0])['status'] == 'cancelled'
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(worker.time, 'sleep', step)
+    with pytest.raises(KeyboardInterrupt):
+        worker.supervise()

@@ -73,11 +73,41 @@ Open http://localhost:5173. Vite proxies `/api` to the backend on port 8000.
 ## Browser integration (in progress)
 
 Set `BROWSER_ENABLED=true` to route website tasks to the Gemini browser agent. The
-default backend is Oxylabs: one remote browser connection stays open for the run,
+current message's explicit browser choice, including a trailing `browser`, bypasses
+model routing. Live staff availability and booking-calendar checks are browser tasks.
+If research leaves requested live availability or stock unverified, the same run can
+continue in the browser with its discovered site links. A failed search provider can
+also hand off to the browser. Browser opt-outs, disabled browser support and draft-only
+results prevent the availability handoff. A staff profile alone does not complete an
+appointment-availability check. Across sites, the agent advances visible forms using
+explicit requirements, known preferences, then plausible reversible defaults. It records
+provisional service, duration or other choices and discloses them with the result;
+availability applies only to the checked configuration. Follow-ups retain these choices
+until the user changes them. After two unproductive routes, or when a choice requires
+private facts or a commitment, it asks for the missing information. Checking slots does
+not authorize making a booking.
+
+The default backend is Oxylabs: one remote browser connection stays open for the run,
 including while waiting for private input or approval. Playwright connects over CDP
 with a URL-safe Basic authorization header; browser credentials stay out of the URL.
 Connections use `page_handler=false` and optional country targeting. Missing credentials
 or a remote connection failure do not start a local browser.
+
+After a successful browser reply, the chat worker keeps that page and connection
+open for 60 seconds (`BROWSER_IDLE_TIMEOUT_S`, configurable from 1 to 300 seconds).
+The reply is saved immediately, so the user can send another message during this
+window. A browser follow-up in the same chat reuses the page, including its basket
+and form state, with fresh task limits and approval requests. Each follow-up still
+goes through the normal router; a non-browser task ends the warm session after it
+finishes. Idle browsers do not occupy active task slots. Expiry, cancellation,
+connection loss, or a changed/deleted saved login closes the connection. Idle page
+network requests are blocked until a new browser task starts.
+
+When information or manual interaction is needed during a task, the agent uses
+the existing input or takeover card and keeps the live view available while
+waiting. This uses `BROWSER_REQUEST_TIMEOUT_S`, not the 60-second idle window.
+The live-view link is exposed only during an active task. A normal `needs_user`
+reply also retains the page briefly; errors and uncertain submissions close it.
 
 Images, media and fonts are blocked before download by default. The browser agent
 can use `open(url, load_images=true)` when images are needed for visual review or
@@ -209,12 +239,47 @@ and restricted targets stop without retrying the same connection request. Browse
 cleanup still runs on every exit; an established task is never replayed automatically.
 
 Recognized cookie dialogs are closed automatically, or accepted when no usable close
-control remains, including English, Finnish and Swedish controls. Detection is scoped
+or necessary-only control remains, including English, Finnish and Swedish controls. Detection is scoped
 to cookie containers and dialogs; unrelated acceptance buttons are left alone. Each
 consent control is attempted once per frame URL. Pending final actions disable this
 handling until their result is checked. Repeated actions on unchanged pages and
 repeated navigation cycles are blocked after two attempts; continued repetition ends
 the run with a request for help instead of consuming the entire browser budget.
+Page observations prioritize foreground dialogs and address suggestions over long
+catalogs, including product popups rendered in portal regions without a dialog role.
+Popup inspection preserves page references. Control checks read DOM attributes without
+replacing the accessibility reference map, including while the page is updating.
+Repeated picker open/select cycles count
+as repetition even when each click succeeds. Restored-login status is included in the
+agent context; current account controls must still establish whether it is signed in.
+Browser tools accept both plain (`e45`) and frame-prefixed (`f21e45`) element references,
+including popup detection and repeat tracking. Authenticated interactions in frames
+remain restricted to the saved login's site.
+Text inspection supports `ref` to read a whole table or date group and `refresh=false`
+to search or paginate the last observation without another browser round trip. Inspection
+refreshes by default; the agent must verify live availability with a fresh observation.
+Text waits check the main page and embedded frames, including frames attached while waiting,
+under one shared timeout. Navigation observations allow up to two seconds for empty or
+spinner-only embedded forms to show readable content before handing the page to the model.
+Product cards omit duplicated descendant text only when their accessible names already
+contain those details; prices, sellers and availability stay together. Query excerpts include
+the containing result and parent references. Pagination preserves its query and subtree.
+Recent inspection evidence survives history trimming with obsolete references removed.
+The first inspection after an action refreshes pending results before cached pagination resumes.
+Repeated identical reads receive guidance, then stop instead of consuming the whole step budget.
+Native selects and custom listbox pickers support exact-label selection. Quantity changes count
+as progress. Search fields without forms support Enter while ordinary inputs and checkout
+submissions retain their guards. Ordinary checkout buttons outside forms are not submissions.
+Once browsing a site, direct navigation uses user-provided or observed URLs; invented paths
+and sorting parameters are rejected. Links opening a new tab become the active page, and Back
+can return to the original results with their filters intact. Warm follow-ups retain that tab.
+Foreground controls remain visible during text searches, and covered background
+targets are refused before clicking. Product previews lead through their merchant's
+ordering controls; the agent checks basket contents before claiming an item was added.
+An address field may be an editable combobox: the agent selects a matching
+suggestion before continuing. Overlay errors retain their actual obstruction details
+in debug history. Repeated overlay failures or exhausted progress offer one manual
+takeover when live view is available, then stop if recovery remains unsuccessful.
 The evaluation Compose configuration keeps browser automation disabled.
 
 `BROWSER_BACKEND=local` is available for development and fixture tests. Install its
@@ -222,7 +287,22 @@ Chromium version with `cd backend && uv run playwright install chromium`. The re
 backend does not require browser binaries in the Docker image. Local flow tests skip
 when Chromium is missing or the execution environment denies browser startup.
 For offline backend validation without launching browsers, run
-`cd backend && uv run --frozen pytest -q --ignore=tests/test_browser_flows.py`.
+`cd backend && uv run --frozen pytest -q --ignore=tests/test_browser_flows.py -k 'not real_chromium'`.
+
+The opt-in live browser checks cover Wolt delivery search and basket, IKEA product selection
+and basket, and Booking.com dates, guests, filters and room availability. They use an isolated
+database and anonymous browser session; input, takeover and final-action requests stop the test.
+They consume the configured model/browser providers. From the repository root with Compose running:
+
+```sh
+docker compose exec -T -e PYTHONPATH=/app backend /app/.venv/bin/python - wolt < backend/evaluations/browser_flows.py
+```
+
+Replace `wolt` with `ikea` or `booking`. With provider environment variables configured locally,
+use `cd backend && uv run --frozen python -m evaluations.browser_flows wolt`.
+The runner prints its observation directory, timings and outcome. Check the saved basket or
+availability observations as well as the model report; `done` alone is not proof of correctness.
+See [the recorded live results](backend/evaluations/browser-flows-2026-11-15.md).
 
 ## Live research evaluation
 

@@ -1,4 +1,5 @@
 import json
+import time
 from uuid import uuid4
 
 from pydantic_core import to_jsonable_python
@@ -20,6 +21,10 @@ class RunStore(ChatStore):
                     UNIQUE(owner, request_id), UNIQUE(parent_id)
                 );
                 CREATE INDEX IF NOT EXISTS runs_chat ON runs(owner, chat_id, created_at);
+                CREATE TABLE IF NOT EXISTS browser_warm_reservations (
+                    owner TEXT NOT NULL, chat_id TEXT NOT NULL, token TEXT NOT NULL,
+                    expires_at REAL NOT NULL, PRIMARY KEY(owner, chat_id)
+                );
             ''')
             db.executescript(SCHEMA)
             db.execute('BEGIN IMMEDIATE')
@@ -33,6 +38,9 @@ class RunStore(ChatStore):
                 db.execute('ALTER TABLE runs ADD COLUMN deadline_at REAL')
             if 'browser_view' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
                 db.execute('ALTER TABLE runs ADD COLUMN browser_view TEXT')
+            if 'worker_id' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
+                db.execute('ALTER TABLE runs ADD COLUMN worker_id TEXT')
+            db.execute('CREATE INDEX IF NOT EXISTS runs_worker ON runs(worker_id)')
             extend_schema(db)
 
     def get(self, owner, run_id):
@@ -52,6 +60,7 @@ class RunStore(ChatStore):
         data['live_output'] = json.loads(data['live_output']) if data.get('live_output') else None
         data.pop('owner', None)
         data.pop('browser_view', None)
+        data.pop('worker_id', None)
         return data
 
     def create(self, owner, chat_id, request_id, message, mode, parent_id=None, attachments=None, timezone='UTC'):
@@ -88,14 +97,66 @@ class RunStore(ChatStore):
             db.execute('UPDATE runs SET timezone=? WHERE id=?', (timezone, identifier))
         return self.get(owner, identifier)
 
-    def claim(self):
+    def claim(self, *, max_running=None):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            row = db.execute("SELECT * FROM runs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
+            if max_running is not None and db.execute("SELECT COUNT(*) FROM runs WHERE status='running'").fetchone()[0] >= max_running:
+                return None
+            row = db.execute("""SELECT runs.* FROM runs WHERE status='queued' AND NOT EXISTS (
+                SELECT 1 FROM browser_warm_reservations reservation
+                WHERE reservation.owner=runs.owner AND reservation.chat_id=runs.chat_id
+                  AND reservation.expires_at>?
+            ) ORDER BY created_at LIMIT 1""", (time.time(),)).fetchone()
             if row:
-                db.execute("UPDATE runs SET status='running', phase='routing', updated_at=? WHERE id=?", (now(), row['id']))
+                db.execute("UPDATE runs SET status='running', phase='routing', updated_at=?,worker_id=id WHERE id=?", (now(), row['id']))
                 return dict(row)
         return None
+
+    def reserve_warm_browser(self, owner, chat_id, token, expires_at):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('DELETE FROM browser_warm_reservations WHERE expires_at<=?', (time.time(),))
+            if not db.execute('SELECT 1 FROM chats WHERE owner=? AND id=?', (owner, chat_id)).fetchone():
+                return False
+            cursor = db.execute('INSERT OR IGNORE INTO browser_warm_reservations VALUES (?, ?, ?, ?)',
+                                (owner, chat_id, token, expires_at))
+            return cursor.rowcount == 1
+
+    def claim_warm_browser(self, owner, chat_id, token, *, max_running=None):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            reservation = db.execute('''SELECT 1 FROM browser_warm_reservations
+                WHERE owner=? AND chat_id=? AND token=? AND expires_at>?''',
+                                     (owner, chat_id, token, time.time())).fetchone()
+            if not reservation:
+                return None
+            if max_running is not None and db.execute("SELECT COUNT(*) FROM runs WHERE status='running'").fetchone()[0] >= max_running:
+                return None
+            row = db.execute("SELECT * FROM runs WHERE owner=? AND chat_id=? AND status='queued' ORDER BY created_at LIMIT 1",
+                             (owner, chat_id)).fetchone()
+            if row:
+                db.execute("UPDATE runs SET status='running', phase='routing', updated_at=?,worker_id=? WHERE id=?", (now(), token, row['id']))
+                db.execute('DELETE FROM browser_warm_reservations WHERE owner=? AND chat_id=? AND token=?',
+                           (owner, chat_id, token))
+                return dict(row)
+        return None
+
+    def release_warm_browser(self, owner, chat_id, token):
+        with self.connect() as db:
+            db.execute('DELETE FROM browser_warm_reservations WHERE owner=? AND chat_id=? AND token=?',
+                       (owner, chat_id, token))
+
+    def warm_browser_expiry(self, owner, chat_id, token):
+        with self.connect() as db:
+            row = db.execute('SELECT expires_at FROM browser_warm_reservations WHERE owner=? AND chat_id=? AND token=?',
+                             (owner, chat_id, token)).fetchone()
+        return row['expires_at'] if row else None
+
+    def worker_run(self, token):
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM runs WHERE worker_id=? OR id=? ORDER BY rowid DESC LIMIT 1',
+                             (token, token)).fetchone()
+        return dict(row) if row else None
 
     def checkpoint(self, run_id, phase, debug, result=None):
         with self.connect() as db:
@@ -121,7 +182,7 @@ class RunStore(ChatStore):
         state['browser'] = self.browser_state(owner, run_id)
         return state
 
-    def finish(self, run_id, status, phase):
+    def finish(self, run_id, status, phase, *, warm_token=None, warm_seconds=60):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT * FROM runs WHERE id=?', (run_id,)).fetchone()
@@ -151,6 +212,10 @@ class RunStore(ChatStore):
                     status, phase = 'partial', 'incomplete_answer'
             if status == 'completed' and not result:
                 status, phase = 'failed', 'missing_result'
+            if warm_token and (status, phase) in {('completed', 'browser_done'), ('partial', 'browser_needs_user')}:
+                db.execute('DELETE FROM browser_warm_reservations WHERE expires_at<=?', (time.time(),))
+                db.execute('INSERT OR IGNORE INTO browser_warm_reservations VALUES (?, ?, ?, ?)',
+                           (row['owner'], row['chat_id'], warm_token, time.time() + warm_seconds))
             if result:
                 timestamp = now()
                 if not row['parent_id']:

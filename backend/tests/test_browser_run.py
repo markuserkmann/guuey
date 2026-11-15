@@ -8,6 +8,7 @@ from app.browser import run as browser_run
 from app.browser.actions import BrowserStop
 from app.browser.agent import BrowserReport
 from app.browser.config import BrowserUnavailable
+from app.browser.schemas import FormChoice
 from app.runs import RunStore
 from app.store import ChatStore
 from browser_fakes import FakePage
@@ -56,6 +57,26 @@ def test_restricted_browser_failure(runtime, monkeypatch):
     monkeypatch.setattr(browser_run, 'build_agent', lambda settings: None)
     browser_run.execute_browser(run_id, row, 'Open page', '', {}, store)
     assert store.get('owner', run_id)['phase'] == 'browser_blocked'
+
+
+def test_result_discloses_provisional_choice_even_when_model_omits_it(runtime, monkeypatch):
+    store, run_id, row = runtime
+
+    @asynccontextmanager
+    async def connection(*args, **kwargs):
+        yield FakePage(), None
+
+    async def run(*args, deps, **kwargs):
+        deps.remember_choice(FormChoice(field='service', value='Basic (30 minutes)'))
+        return SimpleNamespace(output=BrowserReport(outcome='done', summary='Tuesday: 10:00.'))
+
+    monkeypatch.setattr(browser_run, 'open_browser', connection)
+    monkeypatch.setattr(browser_run, 'build_agent', lambda settings: SimpleNamespace(run=run))
+    browser_run.execute_browser(run_id, row, 'Check Tuesday', '', {}, store)
+    reply = store.get('owner', run_id)['result']['reply']
+    assert 'Tuesday: 10:00.' in reply
+    assert 'not confirmed preferences' in reply
+    assert 'service: Basic (30 minutes)' in reply
 
 
 def test_timeout_after_submission_reports_uncertainty(runtime, monkeypatch):

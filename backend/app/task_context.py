@@ -28,7 +28,7 @@ def dated_request(message: str, created_at: str, timezone: str) -> tuple[str, di
         resolved.append({'expression': match[0], 'start_inclusive': today.isoformat(), 'end_exclusive': end})
         return f'{today.isoformat()} inclusive through {end} exclusive'
 
-    dated = re.sub(r'\bnext (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', weekday, message, flags=re.I)
+    dated = re.sub(r'\b(?:next|(?:the )?upcoming|this coming) (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', weekday, message, flags=re.I)
     dated = re.sub(r'\b(?:the )?next (\d{1,3}) days\b', window, dated, flags=re.I)
     context = {'timezone': timezone, 'local_date': today.isoformat(), 'request_time': created_at, 'resolved_dates': resolved}
     return dated + f'\nUser timezone: {timezone}. Reference clock only, not a requested appointment date: {today.isoformat()}.', context

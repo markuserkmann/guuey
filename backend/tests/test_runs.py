@@ -1,4 +1,5 @@
 import pytest
+import time
 
 from app.runs import RunStore
 from app.store import ChatStore
@@ -24,6 +25,45 @@ def test_creation_is_idempotent_and_owner_scoped(stores):
         runs.create('owner', chat, 'request', 'different', 'auto')
     with pytest.raises(ValueError):
         runs.create('owner', chat, 'new', 'hello', 'auto')
+
+
+def test_warm_reservation_routes_only_its_chat_and_expires(stores):
+    chats, runs, chat = stores
+    other = chats.create('owner')['id']
+    assert runs.reserve_warm_browser('owner', chat, 'token', time.time() + 60)
+    assert not runs.reserve_warm_browser('owner', chat, 'other', time.time() + 60)
+    first = runs.create('owner', chat, 'warm', 'follow up', 'auto')
+    second = runs.create('owner', other, 'other', 'hello', 'auto')
+    assert runs.claim()['id'] == second['id']
+    assert runs.claim_warm_browser('owner', chat, 'wrong') is None
+    assert runs.claim_warm_browser('owner', other, 'token') is None
+    assert runs.claim_warm_browser('owner', chat, 'token')['id'] == first['id']
+
+    runs.finish(first['id'], 'cancelled', 'cancelled')
+    assert runs.reserve_warm_browser('owner', chat, 'expired', time.time() - 1)
+    third = runs.create('owner', chat, 'after', 'hello again', 'auto')
+    assert runs.claim_warm_browser('owner', chat, 'expired') is None
+    assert runs.claim()['id'] == third['id']
+
+
+def test_browser_finish_reserves_followup_in_same_transaction(stores):
+    _, runs, chat = stores
+    first = runs.create('owner', chat, 'first', 'open page', 'auto')
+    runs.claim()
+    runs.checkpoint(first['id'], 'browser_done', {}, {'reply': 'Done', 'sources': []})
+    runs.finish(first['id'], 'completed', 'browser_done', warm_token='worker')
+    followup = runs.create('owner', chat, 'followup', 'continue', 'auto')
+    assert runs.claim() is None
+    assert runs.claim_warm_browser('owner', chat, 'worker')['id'] == followup['id']
+
+
+def test_failed_browser_does_not_reserve_followup(stores):
+    _, runs, chat = stores
+    first = runs.create('owner', chat, 'first', 'open page', 'auto')
+    runs.claim()
+    runs.finish(first['id'], 'failed', 'browser_failed', warm_token='worker')
+    followup = runs.create('owner', chat, 'followup', 'continue', 'auto')
+    assert runs.claim()['id'] == followup['id']
 
 
 def test_finish_atomically_saves_exchange_once(stores):

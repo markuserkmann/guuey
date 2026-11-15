@@ -8,14 +8,15 @@ from pydantic_ai.usage import UsageLimits
 from app.browser.actions import BrowserDeps, BrowserStop
 from app.browser.agent import BrowserReport, build_agent
 from app.browser.config import BrowserSettings, BrowserUnavailable
-from app.browser.connection import BrowserResources, open_browser
+from app.browser.connection import open_browser
+from app.browser.warm import WarmBrowser
 from app.browser.store import BrowserStore, SessionConflict
 from app.model_calls import error_details
 from app.research_modes import research_deadline
 from app.secrets import redact
 
 
-def execute_browser(run_id, row, message, context, debug, store):
+def execute_browser(run_id, row, message, context, debug, store, *, session=None):
     settings = BrowserSettings.from_env()
     browser_store = BrowserStore(store, settings)
     try:
@@ -29,31 +30,30 @@ def execute_browser(run_id, row, message, context, debug, store):
     store.checkpoint(run_id, 'browser_starting', debug)
     deadline_token = research_deadline.set(float('inf'))
     try:
-        asyncio.run(_execute(run_id, row['owner'], message, context, debug, browser_store))
+        if session is None:
+            asyncio.run(_standalone(run_id, row['owner'], message, context, debug, browser_store))
+        else:
+            asyncio.run_coroutine_threadsafe(
+                _execute(run_id, row['owner'], message, context, debug, browser_store, session),
+                session.loop).result()
     finally:
         research_deadline.reset(deadline_token)
 
 
-async def _execute(run_id, owner, message, context, debug, store):
+async def _standalone(run_id, owner, message, context, debug, store):
+    session = WarmBrowser(asyncio.get_running_loop(), None)
+    try:
+        await _execute(run_id, owner, message, context, debug, store, session)
+    finally:
+        await session.close()
+
+
+async def _execute(run_id, owner, message, context, debug, store, session):
     settings = store.settings
     started = time.monotonic()
     deps = None
     phase = 'browser_failed'
-
-    def network_error(error):
-        errors = debug['browser'].setdefault('network_errors', [])
-        if len(errors) < 10:
-            errors.append(deps.clean_data(error) if deps else error)
-
-    async def request_guard(request):
-        if deps is None:
-            return
-        try:
-            await deps.active()
-            if request.is_navigation_request() or request.method not in {'GET', 'HEAD', 'OPTIONS'}:
-                deps.check_scope(request.url)
-        except BrowserStop:
-            raise ValueError('The browser task was stopped') from None
+    reusable = False
 
     async def supervise(operation):
         async def monitor():
@@ -85,17 +85,22 @@ async def _execute(run_id, owner, message, context, debug, store):
     try:
         agent = build_agent(settings)
         async with asyncio.timeout(settings.deadline_s) as timeout:
-            resources = BrowserResources()
-            async with open_browser(settings, on_network_error=network_error, request_guard=request_guard,
-                                    resources=resources) as (page, live_view):
-                debug['browser']['timings']['connect_s'] = round(time.monotonic() - started, 3)
-                store.set_view(owner, run_id, live_view)
-                deps = BrowserDeps(page, store, owner, run_id, settings, debug=debug, timeout=timeout,
-                                   hard_deadline=started + 3540, resources=resources)
-                deps.phase('browser_working')
-                result = await supervise(run_agent(agent))
-                report = result.output
-                phase = {'done': 'browser_done', 'needs_user': 'browser_needs_user', 'blocked': 'browser_blocked', 'failed': 'browser_failed'}[report.outcome]
+            if session.page is not None and not session.valid():
+                await session.close()
+            page, live_view, reused = await session.acquire(settings, open_browser)
+            debug['browser']['timings']['connect_s'] = round(time.monotonic() - started, 3)
+            debug['browser']['reused'] = reused
+            store.set_view(owner, run_id, live_view)
+            deps = BrowserDeps(page, store, owner, run_id, settings, debug=debug, timeout=timeout,
+                               hard_deadline=started + 3540, resources=session.resources)
+            session.attach(deps)
+            deps.phase('browser_working')
+            if reused:
+                message += '\nThe browser is still on the previous task’s page. Inspect it before acting; previous approvals do not carry over.'
+            result = await supervise(run_agent(agent))
+            report = result.output
+            phase = {'done': 'browser_done', 'needs_user': 'browser_needs_user', 'blocked': 'browser_blocked', 'failed': 'browser_failed'}[report.outcome]
+            reusable = report.outcome in {'done', 'needs_user'} and not deps.pending_action
     except BrowserStop as exc:
         report, phase = BrowserReport(outcome=exc.outcome, summary=exc.summary), exc.phase
     except SessionConflict as exc:
@@ -141,6 +146,7 @@ async def _execute(run_id, owner, message, context, debug, store):
         if deps:
             deps.secrets.clear()
             deps.secret_values.clear()
+        await session.close()
         return
     browser_debug = debug['browser']
     browser_debug['outcome'] = report.outcome
@@ -148,12 +154,18 @@ async def _execute(run_id, owner, message, context, debug, store):
         browser_debug['steps'] = len(deps.step_seconds)
         browser_debug['timings']['median_step_s'] = round(statistics.median(deps.step_seconds), 3) if deps.step_seconds else None
         browser_debug['timings']['first_observation_s'] = round(deps.first_observation_at - started, 3) if deps.first_observation_at else None
-    result = {'reply': report.summary, 'sources': [source.model_dump() for source in report.sources],
+    result = {'reply': deps.summary_with_assumptions(report.summary) if deps else report.summary,
+              'sources': [source.model_dump() for source in report.sources],
               'browser': {'outcome': report.outcome, 'actions': store.actions(owner, run_id)}}
     if deps:
         result = deps.clean_data(result)
         debug = deps.clean_data(debug)
         deps.secrets.clear()
-        deps.secret_values.clear()
+        if not reusable:
+            deps.secret_values.clear()
+    session.park(deps)
     store.runs.checkpoint(run_id, phase, debug, result)
-    store.runs.finish(run_id, 'completed' if report.outcome == 'done' else 'partial', phase)
+    store.runs.finish(run_id, 'completed' if report.outcome == 'done' else 'partial', phase,
+                      warm_token=session.token if reusable else None, warm_seconds=settings.idle_timeout_s)
+    if not reusable:
+        await session.close()

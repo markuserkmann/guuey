@@ -7,6 +7,12 @@ class BrowserModel(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True, hide_input_in_errors=True)
 
 
+class FormChoice(BrowserModel):
+    field: str = Field(min_length=1, max_length=80)
+    value: str = Field(min_length=1, max_length=200)
+    source: Literal['assumed', 'user'] = 'assumed'
+
+
 class InputField(BrowserModel):
     id: str = Field(pattern=r'^[a-zA-Z][a-zA-Z0-9_-]{0,63}$')
     label: str = Field(min_length=1, max_length=200)

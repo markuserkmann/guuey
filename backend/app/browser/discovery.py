@@ -2,6 +2,7 @@ import json
 import time
 
 from app.browser.actions import BrowserStop
+from app.browser.navigation import request_urls
 
 
 ENDPOINT = 'https://mcp.oxylabs.io/web-api-mcp'
@@ -20,6 +21,7 @@ async def process_search(ctx, call_tool, name, arguments):
         try:
             result = await call_tool(name, deps.clean_data(arguments))
             text = deps.clean(json.dumps(result, ensure_ascii=False, default=str))
+            deps.remember_urls(request_urls(text))
             output = 'Website discovery only; open a result to inspect the page.\n' + text[:12000]
         except BrowserStop:
             raise
