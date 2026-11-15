@@ -1,4 +1,4 @@
-import { DEV_SESSION, tokenError } from "./auth";
+import { authHeaders, sessionExpired } from "./auth";
 import type { TextAttachment } from "./attachments";
 import type { BrowserState } from "./browserApi";
 
@@ -65,18 +65,18 @@ export async function apiFetch(
   init: RequestInit = {},
   sensitive = false,
 ): Promise<Response> {
-  const validationError = token === DEV_SESSION ? null : tokenError(token);
-  if (validationError) throw new Error(validationError);
   const response = await fetch(path, {
     cache: "no-store",
+    credentials: "same-origin",
     ...init,
     headers: {
       ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...(token === DEV_SESSION ? {} : { Authorization: `Bearer ${token}` }),
+      ...authHeaders(token),
       ...init.headers,
     },
   });
   if (!response.ok) {
+    sessionExpired(token, response.status);
     if (sensitive) {
       const messages: Record<number, string> = {
         401: "Your connection is no longer authorized. Reconnect to continue.",
@@ -157,9 +157,11 @@ export const sendMessage = (
 
 export type ResearchRun = {
   id: string;
+  created_at: string;
   request_id: string;
   chat_id: string;
   mode: "auto" | "fast" | "deep";
+  force_browser?: boolean;
   message: string;
   attachments?: TextAttachment[];
   parent_id?: string | null;
@@ -197,6 +199,7 @@ export const startRun = (
   mode: ResearchRun["mode"],
   requestId: string,
   attachments: TextAttachment[] = [],
+  forceBrowser = false,
 ) =>
   request<ResearchRun>(`/api/chats/${encodeURIComponent(chatId)}/runs`, token, {
     method: "POST",
@@ -205,6 +208,7 @@ export const startRun = (
       mode,
       request_id: requestId,
       attachments,
+      force_browser: forceBrowser,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }),
   });
@@ -245,9 +249,9 @@ export function runProgress(run: ResearchRun | null): string {
     routing: "Reading your request…",
     planning: "Planning searches…",
     retrieval: "Reading sources…",
-    answering: "Writing…",
+    answering: "Updating the answer…",
     verifying: "Checking the evidence…",
-    answer_ready: "Answer ready. Checking remaining gaps…",
+    answer_ready: "Improving the answer…",
     browser_starting: "Opening the browser…",
     browser_working: "Working in the browser…",
     awaiting_input: "Waiting for your answer",
@@ -255,7 +259,7 @@ export function runProgress(run: ResearchRun | null): string {
     awaiting_takeover: "Your turn in the live view",
     browser_verifying: "Checking the result…",
   };
-  return (
-    (run && labels[run.phase]) || run?.phase.replaceAll("_", " ") || "Starting…"
-  );
+  if (run?.phase.startsWith("research_round_"))
+    return "Researching your request…";
+  return (run && labels[run.phase]) || "Working on your request…";
 }

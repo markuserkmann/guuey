@@ -7,24 +7,33 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { ConnectPanel } from "./components/ConnectPanel";
+import Markdown from "react-markdown";
+import { SessionGate } from "./components/SessionGate";
 import { DebugPanel } from "./components/DebugPanel";
-import { DEV_SESSION, hasDevSession } from "./auth";
+import type { AppSession } from "./auth";
 import { ChatSidebar } from "./components/ChatSidebar";
 import { EmptyState } from "./components/EmptyState";
 import { Composer } from "./components/Composer";
 import { Icon } from "./components/Icon";
 import { BrowserActivity } from "./components/BrowserActivity";
 import { BrowserRequestCard } from "./components/BrowserRequestCard";
+import { RunActivity } from "./components/RunActivity";
 import { SavedLogins } from "./components/SavedLogins";
+import { RecurringTasks } from "./components/RecurringTasks";
+import {
+  latestTaskRun,
+  listTasks,
+  taskInbox,
+  type RecurringTask,
+} from "./taskApi";
 import { isBrowserRun } from "./browserApi";
 import { streamRun } from "./runStream";
+import { isRunActive, runMessages } from "./runPresentation";
 import type { TextAttachment } from "./attachments";
 import {
   createChat,
   pinChat,
   runError,
-  runProgress,
   getHealth,
   listChats,
   loadChat,
@@ -52,28 +61,36 @@ type Submission = {
   content: string;
   attachments: TextAttachment[];
   mode: ResearchRun["mode"];
+  forceBrowser: boolean;
   failed: boolean;
 };
 
 export function App() {
-  const [token, setToken] = useState("");
-  const [checkingSession, setCheckingSession] = useState(true);
+  return (
+    <SessionGate>
+      {(session, disconnect) => (
+        <Workspace
+          key={session.token}
+          session={session}
+          disconnect={disconnect}
+        />
+      )}
+    </SessionGate>
+  );
+}
+
+function Workspace({
+  session,
+  disconnect,
+}: {
+  session: AppSession;
+  disconnect: () => Promise<void>;
+}) {
+  const { token, user } = session;
   const [submission, setSubmission] = useState<Submission | null>(null);
-  const [syncedRunId, setSyncedRunId] = useState("");
+  const [reconnecting, setReconnecting] = useState(false);
   const submitLock = useRef(false);
   const runGeneration = useRef(0);
-  useEffect(() => {
-    let active = true;
-    void hasDevSession().then((enabled) => {
-      if (active) {
-        if (enabled) setToken(DEV_SESSION);
-        setCheckingSession(false);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [activeId, setActiveId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -81,6 +98,7 @@ export function App() {
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<TextAttachment[]>([]);
   const [mode, setMode] = useState<ResearchRun["mode"]>("auto");
+  const [forceBrowser, setForceBrowser] = useState(false);
   const [run, setRun] = useState<ResearchRun | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [busy, setBusy] = useState(false);
@@ -90,6 +108,13 @@ export function App() {
   const [traces, setTraces] = useState<Record<string, ModelTrace[]>>({});
   const [debugOpen, setDebugOpen] = useState(false);
   const [loginsOpen, setLoginsOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [taskRevision, setTaskRevision] = useState(0);
+  const [unreadUpdates, setUnreadUpdates] = useState(0);
+  const [tasks, setTasks] = useState<RecurringTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [tasksError, setTasksError] = useState("");
+  const activeTask = tasks.find((task) => task.chat_id === activeId);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("guuey-sidebar-collapsed") === "true",
@@ -103,7 +128,7 @@ export function App() {
   }
 
   useEffect(() => {
-    if (loginsOpen) return;
+    if (loginsOpen || tasksOpen) return;
     if (!mobileHistoryOpen && !debugOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -113,7 +138,75 @@ export function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mobileHistoryOpen, debugOpen, loginsOpen]);
+  }, [mobileHistoryOpen, debugOpen, loginsOpen, tasksOpen]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let pending = false;
+    let timer: number;
+    async function refresh() {
+      if (pending) return;
+      pending = true;
+      window.clearTimeout(timer);
+      const [saved, inbox] = await Promise.allSettled([
+        listTasks(token, controller.signal),
+        taskInbox(token, controller.signal),
+      ]);
+      pending = false;
+      if (controller.signal.aborted) return;
+      setTasksLoading(false);
+      if (saved.status === "fulfilled") {
+        setTasks(saved.value);
+        setTasksError("");
+      } else {
+        setTasksError("Could not refresh tasks.");
+      }
+      if (inbox.status === "fulfilled")
+        setUnreadUpdates(inbox.value.unread_count);
+      const checking =
+        saved.status === "fulfilled" &&
+        saved.value.some((task) =>
+          ["queued", "running"].includes(task.last_status ?? ""),
+        );
+      timer = window.setTimeout(refresh, checking ? 3000 : 10000);
+    }
+    void refresh();
+    window.addEventListener("focus", refresh);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [token, taskRevision]);
+
+  async function openTaskChat(id: string) {
+    if (submission || loadingChat)
+      throw new Error(
+        "Wait for the current message to be sent or the chat to load, then try again.",
+      );
+    const [chat, items] = await Promise.all([
+      loadChat(token, id),
+      listChats(token, query),
+    ]);
+    if (id === activeId) {
+      setChats(items);
+      setMessages(chat.messages);
+      return;
+    }
+    ++loadSequence.current;
+    ++runGeneration.current;
+    setActiveId(id);
+    setChats(items);
+    setMessages(chat.messages);
+    setRun(null);
+    setReconnecting(false);
+    setBusy(false);
+    setError("");
+    setDraft("");
+    setAttachments([]);
+    setChatReady(true);
+    setMobileHistoryOpen(false);
+  }
 
   useEffect(() => {
     if (!token) return;
@@ -192,7 +285,7 @@ export function App() {
     setActiveId(id);
     runGeneration.current += 1;
     setSubmission(null);
-    setSyncedRunId("");
+    setReconnecting(false);
     setRun(null);
     setBusy(false);
     setDraft("");
@@ -236,14 +329,13 @@ export function App() {
     if (!token || !activeId) return;
     let current = true;
     const generation = runGeneration.current;
-    latestRun(token, activeId)
+    const restore = activeTask
+      ? latestTaskRun(token, activeId, activeTask.id)
+      : latestRun(token, activeId);
+    restore
       .then((value) => {
         if (current && generation === runGeneration.current) {
-          setRun((existing) =>
-            existing?.chat_id === activeId ? existing : value,
-          );
-          if (value && value.status !== "queued" && value.status !== "running")
-            setSyncedRunId(value.id);
+          setRun((existing) => (existing?.id === value?.id ? existing : value));
         }
       })
       .catch(() => {
@@ -252,7 +344,7 @@ export function App() {
     return () => {
       current = false;
     };
-  }, [token, activeId]);
+  }, [token, activeId, activeTask?.id, activeTask?.last_run_at]);
 
   useEffect(() => {
     if (!run || !token || run.chat_id !== activeId) return;
@@ -264,12 +356,14 @@ export function App() {
         let value = await getRun(token, run!.id);
         if (!current) return;
         setRun(value);
+        setReconnecting(false);
         const pending = value.status === "queued" || value.status === "running";
         if (pending) {
           setBusy(true);
           setError("");
           await streamRun(token, value.id, controller.signal, (snapshot) => {
             if (!current) return;
+            setReconnecting(false);
             setRun((existing) =>
               existing?.id === snapshot.id
                 ? { ...existing, ...snapshot }
@@ -293,14 +387,14 @@ export function App() {
         ]);
         if (current) {
           setMessages(chat.messages);
-          setSyncedRunId(value.id);
+          setReconnecting(false);
           setBusy(false);
           setError(runError(value));
           setChats(items);
         }
       } catch {
         if (current) {
-          setError("Connection interrupted. Reconnecting to the saved run…");
+          setReconnecting(true);
           timer = window.setTimeout(refresh, 3000);
         }
       }
@@ -347,7 +441,7 @@ export function App() {
     setBusy(true);
     setSubmission({ ...next, failed: false });
     setRun(null);
-    setSyncedRunId("");
+    setReconnecting(false);
     setDraft("");
     setAttachments([]);
     try {
@@ -358,6 +452,7 @@ export function App() {
         next.mode,
         next.requestId,
         next.attachments,
+        next.forceBrowser,
       );
       setRun(value);
       setSubmission(null);
@@ -390,6 +485,7 @@ export function App() {
       chatId: activeId,
       content: content.trim(),
       mode,
+      forceBrowser: forceBrowser && !!health?.browser_enabled,
       attachments,
       failed: false,
     });
@@ -421,36 +517,9 @@ export function App() {
         attachments: submission.attachments,
         delivery: submission.failed ? "failed" : "sending",
       });
-    else if (
-      run?.chat_id === activeId &&
-      (syncedRunId !== run.id || !run.result)
-    ) {
-      const userId = `user:${run.request_id}`;
-      if (!run.parent_id && !items.some((item) => item.id === userId))
-        items.push({
-          id: userId,
-          role: "user",
-          content: run.message,
-          attachments: run.attachments,
-          delivery: "sent",
-        });
-      const liveAnswer =
-        run.live_output?.kind !== "progress" ? run.live_output : null;
-      if (
-        (run.result || liveAnswer?.text) &&
-        !items.some((item) => item.id === `assistant:${run.id}`)
-      )
-        items.push({
-          id: `assistant:${run.id}`,
-          role: "assistant",
-          content: liveAnswer?.text || run.result?.reply || "",
-          sources: liveAnswer?.text ? [] : run.result?.sources,
-          delivery: busy ? "updating" : undefined,
-          draft: liveAnswer?.kind === "draft",
-        });
-    }
+    else if (run?.chat_id === activeId) return runMessages(items, run);
     return items;
-  }, [messages, submission, activeId, run, syncedRunId, busy]);
+  }, [messages, submission, activeId, run]);
 
   async function runAction(action: "continue" | "cancel") {
     if (!run) return;
@@ -469,33 +538,6 @@ export function App() {
     }
   }
 
-  function disconnect() {
-    ++loadSequence.current;
-    ++runGeneration.current;
-    setAttachments([]);
-    setDraft("");
-    setDebugOpen(false);
-    setError("");
-    setLoginsOpen(false);
-    setRun(null);
-    setTraces({});
-    setToken("");
-    setSubmission(null);
-    setMessages([]);
-    setChats([]);
-    setActiveId("");
-    setHealth(null);
-    setChatReady(false);
-  }
-
-  if (checkingSession)
-    return (
-      <main className="connect-view">
-        <p role="status">Connecting…</p>
-      </main>
-    );
-  if (!token) return <ConnectPanel onConnect={setToken} />;
-
   return (
     <div
       className={`workspace-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${debugOpen ? " debug-open" : ""}`}
@@ -509,9 +551,22 @@ export function App() {
       )}
       <div className={`sidebar-wrap${mobileHistoryOpen ? " open" : ""}`}>
         <ChatSidebar
-          onDisconnect={token === DEV_SESSION ? undefined : disconnect}
+          username={user?.username}
+          onDisconnect={() =>
+            void disconnect().catch(() =>
+              setError(
+                "Could not sign out. Check your connection and try again.",
+              ),
+            )
+          }
           onPin={(id, pinned) => void togglePin(id, pinned)}
           runningChatId={busy ? activeId : undefined}
+          tasks={tasks}
+          tasksLoading={tasksLoading}
+          tasksError={tasksError}
+          unreadUpdates={unreadUpdates}
+          onOpenTasks={() => setTasksOpen(true)}
+          onRetryTasks={() => setTaskRevision((value) => value + 1)}
           onCollapse={() => {
             setSidebarCollapsed(true);
             localStorage.setItem("guuey-sidebar-collapsed", "true");
@@ -545,7 +600,9 @@ export function App() {
               Guuey
             </a>
             <span className="chat-title">
-              {chats.find((chat) => chat.id === activeId)?.title ?? "New chat"}
+              {activeTask?.title ??
+                chats.find((chat) => chat.id === activeId)?.title ??
+                "New chat"}
             </span>
           </div>
           <div className="header-actions">
@@ -596,6 +653,65 @@ export function App() {
               if (submission) void sendSubmission(submission);
             }}
             onCancel={() => runAction("cancel")}
+            activeMessageId={
+              run?.chat_id === activeId ? `assistant:${run.id}` : undefined
+            }
+            activity={
+              run?.chat_id === activeId && (
+                <RunActivity
+                  key={run.id}
+                  run={run}
+                  reconnecting={reconnecting}
+                  onStop={() => runAction("cancel")}
+                >
+                  {isRunActive(run) && run.live_output?.kind === "progress" && (
+                    <div className="run-progress-note">
+                      <Markdown
+                        disallowedElements={["img", "a"]}
+                        unwrapDisallowed
+                      >
+                        {run.live_output.text}
+                      </Markdown>
+                    </div>
+                  )}
+                  {run.browser && (
+                    <details
+                      className="run-details"
+                      open={
+                        run.browser.actions.some(
+                          (action) => action.status === "unverified",
+                        ) || undefined
+                      }
+                    >
+                      <summary>
+                        Browser activity
+                        {run.browser.steps.length
+                          ? ` · ${run.browser.steps.length} ${run.browser.steps.length === 1 ? "step" : "steps"}`
+                          : ""}
+                      </summary>
+                      <BrowserActivity
+                        state={run.browser}
+                        onReview={() => setLoginsOpen(true)}
+                      />
+                    </details>
+                  )}
+                  {run.status === "running" && run.browser?.request && (
+                    <BrowserRequestCard
+                      key={`${run.id}:${run.browser.request.id}`}
+                      token={token}
+                      request={run.browser.request}
+                      liveView={run.browser.live_view_url}
+                      onRun={(value) =>
+                        setRun((current) =>
+                          current?.id === value.id ? value : current,
+                        )
+                      }
+                      onCancel={() => runAction("cancel")}
+                    />
+                  )}
+                </RunActivity>
+              )
+            }
           >
             {!chatReady ? (
               <p className="waiting" role="status">
@@ -604,47 +720,12 @@ export function App() {
             ) : visibleMessages.length === 0 ? (
               <EmptyState />
             ) : null}
-            {run?.chat_id === activeId && run.browser && (
-              <BrowserActivity
-                state={run.browser}
-                onReview={() => setLoginsOpen(true)}
-              />
-            )}
-            {run?.chat_id === activeId &&
-              run.status === "running" &&
-              run.browser?.request && (
-                <BrowserRequestCard
-                  key={`${run.id}:${run.browser.request.id}`}
-                  token={token}
-                  request={run.browser.request}
-                  liveView={run.browser.live_view_url}
-                  onRun={(value) =>
-                    setRun((current) =>
-                      current?.id === value.id ? value : current,
-                    )
-                  }
-                  onCancel={() => runAction("cancel")}
-                />
-              )}
-            {busy && (
+            {busy && !run && (
               <div className="waiting">
                 <p role="status">
                   <span className="activity-spinner" aria-hidden="true" />
-                  {submission ? "Sending message…" : runProgress(run)}
+                  Sending message…
                 </p>
-                {run?.live_output?.kind === "progress" && (
-                  <p className="research-live-progress">
-                    {run.live_output.text}
-                  </p>
-                )}
-                <button
-                  className="quiet-button"
-                  type="button"
-                  disabled={!run}
-                  onClick={() => void runAction("cancel")}
-                >
-                  Stop
-                </button>
               </div>
             )}
             {!busy &&
@@ -677,6 +758,7 @@ export function App() {
                       content: run.message,
                       attachments: run.attachments ?? [],
                       mode: run.mode,
+                      forceBrowser: run.force_browser ?? false,
                       failed: false,
                     })
                   }
@@ -707,12 +789,16 @@ export function App() {
 
         <Composer
           key={activeId}
+          token={token}
           draft={draft}
           onDraftChange={setDraft}
           attachments={attachments}
           onAttachmentsChange={setAttachments}
           mode={mode}
           onModeChange={setMode}
+          forceBrowser={forceBrowser && !!health?.browser_enabled}
+          onForceBrowserChange={setForceBrowser}
+          browserAvailable={!!health?.browser_enabled}
           onSubmit={submit}
           disabled={busy || !chatReady || loadingChat || !!submission}
           busy={busy}
@@ -742,6 +828,20 @@ export function App() {
                 )
                 .catch(() => undefined);
           }}
+        />
+      )}
+      {tasksOpen && (
+        <RecurringTasks
+          token={token}
+          researchReady={health?.mode === "gemini" && !!health.exa_configured}
+          onClose={() => setTasksOpen(false)}
+          onChanged={() => {
+            setTaskRevision((value) => value + 1);
+            void listChats(token, query)
+              .then(setChats)
+              .catch(() => undefined);
+          }}
+          onOpenChat={openTaskChat}
         />
       )}
     </div>

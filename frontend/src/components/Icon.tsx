@@ -14,8 +14,14 @@ const paths = {
   search: "M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z",
   send: "M12 19V5m-6 6 6-6 6 6",
   attach: "m8 13 7-7a3 3 0 0 1 4 4l-9 9a5 5 0 0 1-7-7l9-9m-6 12 9-9",
+  microphone:
+    "M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5ZM5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8",
+  stop: "M6 6h12v12H6Z",
+  pause: "M9 5v14M15 5v14",
+  settings: "M4 7h6m4 0h6M4 17h10m4 0h2M10 4v6m4 4v6",
   file: "M14 3H5v18h14V8l-5-5Zm0 0v5h5M8 12h8m-8 4h6",
   chevron: "m8 10 4 4 4-4",
+  repeat: "M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M18 18a8 8 0 0 1-13-3",
   debug: "m4 6 5 5-5 5m9 1h7",
   logout: "M9 4H4v16h5m6-12 4 4-4 4M8 12h11",
 } as const;

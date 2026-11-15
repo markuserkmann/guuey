@@ -93,3 +93,35 @@ incoming false values and invalid origins or missing URLs produce no iframe.
 
 Limitation: An active VNC session was not exercised. Provider WebSocket connection
 errors are expected for the invalid fixture session and are shown by the viewer.
+
+Browser option validation (2026-11-15)
+
+Scope: the Force browser debug checkbox and its run submission/routing behavior. Existing dark
+chat surfaces, system typography and compact toolbar supply the direction.
+ENERGY 1 / RHYTHM 1 / MOTION 1. A native checkbox makes the browser debug override
+explicit. Unchecked keeps automatic routing and browser handoffs available.
+It sits beside research mode because both configure the next run.
+The toolbar wraps on narrow screens to preserve its controls and touch targets.
+
+PASS R-03: Chromium checked widths 320, 390, 760, 1024 and 1440 with no horizontal
+overflow. The checkbox label stays inside the viewport and is at least 44px tall.
+Screenshots at 320 and 1440 were inspected.
+PASS R-26: Initial load and reload leave Force browser unchecked. Mouse and Space toggle
+it. Send includes force_browser=false/true as selected. A simulated failed request
+disables changes; Retry preserves both the option and request ID.
+PASS R-27: Browser is disabled and unchecked when server support is unavailable;
+its tooltip explains availability. Busy/submission states disable the control.
+PASS R-32/R-39: Native labelled checkbox, pointer/disabled cursors, hover/active
+styles and visible keyboard focus. Space activation was exercised in Chromium.
+PASS R-25/R-34: The checkbox reuses the existing dark theme's foreground, surface
+and focus tokens. No theme or palette was introduced.
+PASS R-35: TypeScript/Vite build, frontend tests and changed-file Prettier checks
+passed. Full-app browser checks used mocked API responses and had no page errors.
+The deliberate 503 fixture exercised retry behavior; no live provider was called.
+PASS R-02/R-17/R-18/R-23/R-24/R-28/R-33/R-36/R-38/R-40: Source edits add one real
+setting, no assets, navigation, media, FAQ, invented claims or decorative copy.
+PASS purpose/liveliness: Existing chat identity, send-button focal point and compact
+typography are retained. Spacing groups the settings; no new decoration or motion.
+PASS craftsmanship: UI selection reaches stored runs, retries and continuations.
+Backend tests cover automatic routing by default, forced browser use, search handoffs,
+low-confidence rules, and automatic warm-browser reuse for an unchecked follow-up.

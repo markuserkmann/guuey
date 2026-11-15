@@ -23,7 +23,7 @@ def execute_browser(run_id, row, message, context, debug, store, *, session=None
         browser_store.start(row['owner'], run_id)
     except (SessionConflict, ValueError):
         return
-    debug['browser'] = {'backend': settings.backend, 'steps': 0, 'timings': {}, 'outcome': None,
+    debug['browser'] = {'backend': settings.backend, 'driver': settings.driver, 'steps': 0, 'timings': {}, 'outcome': None,
                         'limits': {'deadline_s': settings.deadline_s, 'max_steps': settings.max_steps,
                                    'tool_retries': settings.tool_retries, 'thinking_level': settings.thinking_level,
                                    'model_max_tokens': settings.model_max_tokens, 'model_timeout_s': settings.model_timeout_s}}

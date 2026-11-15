@@ -17,14 +17,31 @@ def stores(tmp_path):
 def test_creation_is_idempotent_and_owner_scoped(stores):
     chats, runs, chat = stores
     run = runs.create('owner', chat, 'request', 'hello', 'auto')
+    assert run['force_browser'] is False
     assert runs.create('owner', chat, 'request', 'hello', 'auto')['id'] == run['id']
     assert runs.get('other', run['id']) is None
     with pytest.raises(LookupError):
         runs.create('other', chat, 'second', 'hello', 'auto')
     with pytest.raises(ValueError):
         runs.create('owner', chat, 'request', 'different', 'auto')
+    with pytest.raises(ValueError, match='different content'):
+        runs.create('owner', chat, 'request', 'hello', 'auto', force_browser=True)
     with pytest.raises(ValueError):
         runs.create('owner', chat, 'new', 'hello', 'auto')
+
+
+@pytest.mark.parametrize('forced', [False, True])
+def test_previous_browser_checkbox_column_migrates(stores, forced):
+    _, runs, chat = stores
+    run = runs.create('owner', chat, 'request', 'Find prices', 'auto', force_browser=forced)
+    with runs.connect() as db:
+        db.execute('ALTER TABLE runs RENAME COLUMN force_browser TO allow_browser')
+    migrated = RunStore(str(runs.path))
+    migrated = RunStore(str(migrated.path))
+    saved = migrated.get('owner', run['id'])
+    assert saved['force_browser'] is forced
+    assert 'allow_browser' not in saved
+    assert saved['message'] == 'Find prices'
 
 
 def test_warm_reservation_routes_only_its_chat_and_expires(stores):

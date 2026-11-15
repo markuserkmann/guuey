@@ -1,0 +1,189 @@
+Recurring-task frontend validation (2026-11-15)
+
+Scope and evidence
+This report covers the recurring-task UI extension in RecurringTasks.tsx,
+recurringTasks.css, taskApi.ts and its App.tsx integration. It records the
+implementation pass's isolated browser walkthrough against the real API,
+source inspection, and an independent review of code and captured screenshots.
+The independent reviewer returned ship with no material findings. That review
+did not independently repeat browser, screen-reader or live-provider checks.
+An isolated live CVE run also completed research, evaluation and notification
+persistence. This verifies the provider integration, not the factual accuracy or
+completeness of every model-selected finding.
+
+Direction
+Antislop during was selected explicitly for this session.
+Existing Guuey dark surfaces (#171717/#232323), system typography and compact
+controls supply the direction. ENERGY 1 / RHYTHM 1 / MOTION 1.
+The native management dialog protects focus while editing schedules and conditions.
+Tasks and Updates separate configuration from the results that merit attention.
+Compact rows keep schedule, condition and status together; actions sit below them.
+The existing light action treatment identifies New task and Create task/Save changes.
+Updates gives matching content priority; unread text and counts communicate state.
+Source spacing uses 6px label gaps, 8px control groups, 12px separation before
+actions, 16px form gaps and 24px row padding to group details and separate work.
+The inherited system face keeps this management surface consistent with chat.
+No new visual assets, theme, illustration, decorative motion or global design
+system was introduced. The existing Close icon retains its dismissal meaning.
+
+Automated and static checks
+PASS: TypeScript compilation and Vite production build, recorded by implementation.
+PASS: All 20 existing frontend tests, recorded by implementation.
+PASS: Prettier check across frontend source, helper, scripts, tests and configuration.
+PASS: 88 targeted backend regression checks for retrieval, source caching and runs.
+PASS: Compact provider schema retains local limits for summaries, alert items and
+evidence quotes; malformed evaluations were rejected in a direct validation check.
+PASS: Design detector returned [] for the new files.
+PASS: Source scan found no em dashes, generic marketing CTAs or banned marketing
+buzzwords in the three new source files.
+PASS: Calculated enabled-text contrast from the source colors: body on dialog
+13.55:1; muted on dialog 7.66:1; muted on raised surface 6.44:1; placeholder on
+input 6.86:1; warning on dialog 10.42:1; error on dialog 11.35:1; body on notice
+11.38:1; primary button 15.45:1; primary hover 11.62:1; delete button 12.52:1.
+These are source-color calculations, not a screen-reader or rendered-pixel audit.
+
+Recorded browser walkthrough
+PASS: Tasks opens the named native dialog; Tasks and Updates show their empty states.
+PASS: New task opens the form; submitting missing required values shows validation.
+PASS: Cancel leaves the editor; the Close button dismisses the dialog.
+PASS: Run automatically can be unchecked and checked again in the task form.
+PASS: Use hourly CVE example fills the form; Create task persists the task through
+the real API and displays its schedule and condition.
+PASS: Pause and Resume change the persisted task state and visible row text.
+PASS: Edit accepts a custom interval; Save changes persists the edited schedule.
+PASS: History opens and shows its empty state and a deliberately induced error.
+PASS: History Retry recovers when its failed request is restored.
+PASS: Check now queues a check; polling displays the worker's missing-provider
+failure. This verifies queue/error handling, not successful provider research.
+PASS: Explicit synthetic notifications populate Updates and the unread header count.
+These fixtures are test data and are not evidence of a live CVE finding.
+PASS: Mark as read and Mark all as read update notification state and unread counts.
+PASS: Open chat navigates to the task's chat, including when it is already current.
+PASS: A cited source link opened the specified FIRST CVSS page in a new tab.
+PASS: Escape closes the dialog and restores focus; Tab and Enter operate the UI.
+PASS: Delete offers Keep task and Delete task; keeping cancels deletion, confirming
+removes the task and its updates while preserving saved chat messages.
+PASS: A connection error is visible; Refresh recovers after the connection returns.
+PASS: The walkthrough recorded zero uncaught JavaScript errors.
+
+Responsive and visual evidence
+PASS: Browser checks at 320, 390, 760, 1024 and 1440px recorded no horizontal overflow.
+At 320px, header controls remain inside the header. Form columns collapse on mobile;
+task headings, status text and actions wrap within the dialog.
+PASS: Desktop/mobile screenshots were viewed and accepted by the implementation
+pass and independent reviewer:
+  .impeccable/review/desktop.png
+  .impeccable/review/mobile.png
+  .impeccable/review/tasks-form-desktop.png
+  .impeccable/review/tasks-form-mobile.png
+  .impeccable/review/tasks-updates-desktop.png
+The optional tasks-header-mobile.png checks the header only; its conversation was
+still lazy-loading and is not evidence for the loaded conversation layout.
+
+Antislop delivery evidence for this UI scope
+PASS R-02: New source copy contains no em dashes.
+PASS R-03: The five checked widths have no horizontal overflow; new dialog buttons
+and form fields use 44px minimum targets, including the checkbox's full label row.
+PASS R-17: Schedule times, interval labels and unread counts come from API data;
+synthetic notification data used in the walkthrough is explicitly identified above.
+PASS R-18: N/A for testimonials; none were added.
+PASS R-23: The existing design and approved extension supply structure and direction;
+no new logo, avatar, illustration or other visual asset was created.
+PASS R-24: Tasks/Updates switch real views; Open chat reaches a stored chat. Source
+links use API URLs filtered to HTTP(S), with native links and safe new-tab behavior.
+PASS R-25: Source-color calculations for enabled text exceed 4.5:1, listed above.
+PASS R-26: The recorded walkthrough verifies persisted task actions, unread updates,
+navigation, validation and recovery, including checkbox, retry and source-link controls.
+PASS R-27: Tasks, Updates and History provide loading, empty and error states;
+pending actions disable conflicting controls and expose progress/status text.
+PASS R-28: N/A for FAQ; none was added.
+PASS R-32: Browser evidence covers Tab, Enter, Escape and focus restoration; source
+uses showModal(), native controls and the existing visible 2px focus outline.
+PASS R-33: The extension lives in component, API and stylesheet source.
+PASS R-34: The existing single dark theme is retained. N/A for additional themes
+or a theme toggle; neither was introduced.
+PASS R-35: The production build, frontend tests, recorded control walkthrough,
+five viewport checks and console check passed within the scope and limits above.
+PASS R-36: The UI makes no invented security, performance or customer claims;
+provider availability and in-app-only notification limits are stated in the UI.
+PASS R-37: The inherited Guuey direction and 1/1/1 dials were set before implementation.
+PASS R-38: Task and notification content comes from the API; the CVE template is
+labelled an example and walkthrough notifications are explicitly synthetic.
+PASS R-39: Buttons are native, fields have visible labels, the dialog and Close
+control are named, errors/statuses have live semantics and selection is expressed
+with aria-pressed. Existing focus/hover/active/disabled treatments are reused.
+No new whole document, image or nonessential animation was introduced.
+PASS R-40: N/A for new media, hero images, embeds and third-party scripts; none were
+added. No Lighthouse or field performance result is claimed.
+PASS R-01: Existing neutral surfaces and light actions preserve hierarchy; no
+gradient or colored glow was added.
+PASS R-04: The existing Close icon identifies dismissal; other new actions use text.
+PASS R-06: The inherited system font preserves chat continuity and compact readability.
+PASS R-07: Plain inherited surfaces keep attention on instructions and results;
+no decorative background pattern was added.
+PASS R-08: N/A for decorative button arrows; none were added.
+PASS R-09: Unread labels/counts and schedule/status text communicate real state;
+no promotional capsule or eyebrow badge was added.
+PASS R-10: N/A for glass effects; none were added.
+PASS R-12: Tonal surfaces, a dialog boundary and backdrop identify protected focus;
+no new shadow was added.
+PASS R-13: N/A for decorative glow; none was added.
+PASS R-14: Repeated task rows support comparing recurring work; feature-card grids
+and nested cards were not introduced.
+PASS R-19: No new animation was added; inherited hover feedback matches MOTION 1
+and existing reduced-motion treatment remains available.
+PASS R-22: N/A for illustrations; none were added.
+PASS R-05: Tasks, conditions, schedules, history and updates determine the layout;
+predictable row rhythm matches RHYTHM 1.
+PASS R-11: The inherited 12px dialog, 8px buttons and 6px fields preserve shape roles;
+view selection uses a straight underline rather than additional pill containers.
+PASS R-15: Actions name their result: New task, Check now, Pause, Resume, Edit,
+History, Open chat, Delete task, Keep task and Mark as read.
+PASS R-16: The new copy explains checks, matching conditions and notification limits
+without marketing buzzwords.
+PASS R-20: Dark chat surfaces, compact type, restrained row dividers and light
+primary actions retain Guuey's existing visual identity.
+PASS R-21: Dark styling follows the incumbent product direction.
+PASS R-29: Neutral colors dominate; inherited warning and destructive colors retain
+their semantic roles rather than establishing a new palette.
+PASS R-30: This extends Guuey's existing interface; no outside product was cloned.
+PASS R-31: Color, type, dialog, row layout, spacing and icon purposes are recorded
+in Direction and the applicable purpose-gate entries above.
+PASS liveliness: Explicit 1/1/1 dials match the calm management surface; light primary
+actions set the task/form focal point, update content leads the inbox, and row
+spacing and repeated compact typography provide structure and identity.
+PASS C-1: Major visual decisions have recorded product or hierarchy reasons.
+PASS C-2: The recorded control walkthrough observes real outcomes for task actions,
+view selection, form controls, navigation, retry and dismissal.
+PASS C-3: Each view and section serves task setup, status, history or matching results.
+PASS C-4: The recorded checks cover empty/error states, mobile wrapping and keyboard
+operation in the existing theme, subject to the runtime limits below.
+PASS C-5: No fabricated product claims or identities appear in the extension.
+
+Limits and remaining verification
+This document records evidence; it does not replace the implementing agent's final
+delivery gate. The independent review found no material UI issue but did not run
+its own browser walkthrough, screen reader or live provider check.
+The real-API browser walkthrough used an isolated environment. Its missing-provider
+failure and synthetic notifications validate UI state, not CVE accuracy.
+A separate live check used the configured Gemini and Exa services with a temporary
+database and a paused task: it completed in 45.5 seconds, retrieved 30 sources
+(seven live pages), evaluated nine matching events and stored one grouped update.
+No schedule or notification from this validation remains in the user's workspace.
+The check exposed and led to fixes for general-topic live retrieval and Gemini's
+rejection of nested schema bounds. Output limits are enforced locally instead.
+Live-run deduplication over successive provider checks was not repeated; transactional
+deduplication, concurrent queue attempts, pause/resume, catch-up, ownership and
+interruption handling passed isolated backend checks previously.
+No screen-reader, physical touch-device, Lighthouse or field performance check is
+claimed. Additional source-link destinations were inspected in source; a successful
+live visit to every external URL is not claimed.
+The earlier full offline backend suite had 861 passes. The later targeted suite
+passed 88 checks after the retrieval change. Unrelated concurrent work is outside
+this feature's report.
+
+Final implementing-agent delivery gate: PASS for the recurring-task UI scope.
+The implementing agent inspected the captured viewports, reviewed the recorded
+control outcomes and source checks above, and confirmed the required hard,
+purpose, liveliness and craftsmanship items. The independent review's ship
+disposition supports this decision at its stated code/screenshot scope.

@@ -1,5 +1,6 @@
-import { DEV_SESSION, tokenError } from "./auth";
+import { authHeaders, sessionExpired } from "./auth";
 import type { ResearchRun } from "./chatApi";
+import { isRunActive } from "./runPresentation";
 
 export type RunSnapshot = Pick<
   ResearchRun,
@@ -12,41 +13,91 @@ export async function streamRun(
   signal: AbortSignal,
   onSnapshot: (snapshot: RunSnapshot) => void,
 ): Promise<void> {
-  const invalid = token === DEV_SESSION ? null : tokenError(token);
-  if (invalid) throw new Error(invalid);
   const response = await fetch(
     `/api/runs/${encodeURIComponent(runId)}/events`,
     {
       signal,
-      headers:
-        token === DEV_SESSION ? {} : { Authorization: `Bearer ${token}` },
+      credentials: "same-origin",
+      headers: authHeaders(token),
     },
   );
-  if (!response.ok || !response.body)
+  if (!response.ok || !response.body) {
+    sessionExpired(token, response.status);
     throw new Error(`Could not connect to live updates (${response.status}).`);
+  }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let pending = "";
+  let event = "";
+  let data: string[] = [];
+  let frameSize = 0;
+
+  function consumeLine(line: string): boolean {
+    if (!line) {
+      const eventData = data.join("\n");
+      const isRun = event === "run";
+      event = "";
+      data = [];
+      frameSize = 0;
+      if (!isRun || !eventData) return false;
+      const snapshot = JSON.parse(eventData) as RunSnapshot;
+      if (!snapshot || snapshot.id !== runId) return false;
+      if (
+        ![
+          "queued",
+          "running",
+          "completed",
+          "partial",
+          "failed",
+          "cancelled",
+        ].includes(snapshot.status) ||
+        typeof snapshot.phase !== "string" ||
+        (snapshot.live_output != null &&
+          (typeof snapshot.live_output.text !== "string" ||
+            !["answer", "draft", "progress"].includes(
+              snapshot.live_output.kind,
+            ))) ||
+        (snapshot.result != null &&
+          (typeof snapshot.result.reply !== "string" ||
+            !Array.isArray(snapshot.result.sources)))
+      )
+        throw new Error("Invalid live update. Reconnecting to the saved run.");
+      onSnapshot(snapshot);
+      return !isRunActive(snapshot);
+    }
+    frameSize += line.length;
+    if (frameSize > 2_000_000)
+      throw new Error("Live update exceeded the response limit.");
+    const colon = line.indexOf(":");
+    const field = colon < 0 ? line : line.slice(0, colon);
+    const value = colon < 0 ? "" : line.slice(colon + 1).replace(/^ /, "");
+    if (field === "event") event = value;
+    if (field === "data") data.push(value);
+    return false;
+  }
+
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) return;
-      pending += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      pending += decoder.decode(value, { stream: !done });
       let boundary: number;
-      while ((boundary = pending.indexOf("\n\n")) >= 0) {
-        const frame = pending.slice(0, boundary);
-        pending = pending.slice(boundary + 2);
-        if (!frame.split("\n").includes("event: run")) continue;
-        const data = frame
-          .split("\n")
-          .filter((line) => line.startsWith("data: "))
-          .map((line) => line.slice(6))
-          .join("\n");
-        const snapshot = JSON.parse(data) as RunSnapshot;
-        if (snapshot.id === runId) onSnapshot(snapshot);
+      while ((boundary = pending.search(/[\r\n]/)) >= 0) {
+        // A CRLF pair can arrive in separate network chunks.
+        if (
+          !done &&
+          pending[boundary] === "\r" &&
+          boundary === pending.length - 1
+        )
+          break;
+        const line = pending.slice(0, boundary);
+        const separator =
+          pending[boundary] === "\r" && pending[boundary + 1] === "\n" ? 2 : 1;
+        pending = pending.slice(boundary + separator);
+        if (consumeLine(line)) return;
       }
-      if (pending.length > 2_000_000)
+      if (pending.length + frameSize > 2_000_000)
         throw new Error("Live update exceeded the response limit.");
+      if (done) return;
     }
   } finally {
     await reader.cancel().catch(() => undefined);

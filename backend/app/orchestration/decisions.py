@@ -10,15 +10,20 @@ from pydantic import BaseModel, Field, ValidationError
 
 WORKFLOW_CRITERIA = {
     'chat': 'Conversation, rewriting, or stable explanation needing no external evidence.',
-    'research': 'External evidence, page reading, current facts or sourced comparisons are needed. '
-                'If the request also asks to change a website or account, choose browser instead, even when '
-                'finding or comparing the cheapest option is a prerequisite. '
+    'research': 'Only information is requested: external evidence, page reading, current facts or sourced comparisons. '
+                'Never choose research for a request to perform an action, such as ordering, buying, booking, '
+                'submitting, sending or changing an account. These are browser tasks, even when research is a prerequisite. '
                 'Preparing a booking request or appointment enquiry for review is research; it does not send anything.',
     'browser': 'The user explicitly asks to use a browser (including appending "browser"), or the task needs '
                'website interaction. This includes read-only checks of live appointment slots, a named staff member\'s '
                'availability on a date, booking calendars, account status, and dynamic inventory, as well as signing in, '
-               'filling forms, adding items to or modifying a shopping cart or basket, ordering or booking. '
-               'Finding the cheapest item and adding it to a basket is browser, including when checkout is not requested. '
+               'filling or submitting forms, adding items to or modifying a shopping cart or basket, ordering, buying, '
+               'checking out, booking, cancelling or rescheduling, sending messages, uploading or downloading files, '
+               'and creating or changing accounts, subscriptions or settings. '
+               'Always choose browser when the user asks you to perform such an action, including indirect requests '
+               'like "I need to order groceries" and follow-ups accepting an action proposed in context. '
+               'Mixed research-and-action requests are browser from the start: finding the cheapest item and buying '
+               'it or adding it to a basket, comparing flights and booking one, or drafting and sending a message. '
                'Checking availability does not authorize making a booking. '
                'A draft alone does not need browser interaction. Respect requests not to use a browser.',
     'clarification': 'Essential information is missing and cannot reasonably be inferred or found on the website.',
@@ -26,6 +31,7 @@ WORKFLOW_CRITERIA = {
 ROUTING_INSTRUCTIONS = ('Classify as chat, research, browser, or clarification. '
                         + ' '.join(f'{name}: {criteria}' for name, criteria in WORKFLOW_CRITERIA.items())
                         + ' Recommend deep for multiple items or complex constraints. Do not perform the task.')
+ROUTING_CONFIDENCE_THRESHOLD = 0.8
 
 
 def browser_preference(message: str) -> bool | None:
@@ -45,30 +51,93 @@ def browser_preference(message: str) -> bool | None:
     return None
 
 
+_BROWSER_ACTION_PATTERNS = (
+    r'(?:order|reorder|buy|purchase)\s+(?!(?:advice|recommendations?|guides?|tips)\b)\S',
+    r'place\s+(?:(?:an?|the|my|our|another)\s+)?order\b',
+    r'(?:book|reserve)\s+(?!(?:recommendations?|reviews?|summaries|summary|reports?|titles?|authors?)\b)\S',
+    r'(?:sign|log)\s*(?:in|into|out)\b|sign\s*up\b',
+    r'(?:register|subscribe)\s+(?:me\s+)?(?:for|on|with|to)\b',
+    r'(?:create|open|close|delete)\s+.*\baccount\b',
+    r'(?:cancel|reschedule|renew|change|update|edit|enable|disable)\s+.*\b'
+    r'(?:order|appointment|booking|reservation|subscription|membership|account|profile|settings|'
+    r'address|password|payment|delivery|flight|ticket)\b',
+    r'(?:cancel|reschedule|renew)\s+(?:it|that|this|them)\b',
+    r'(?:add|put|place)\s+.+\b(?:to|into|in)\s+'
+    r'(?:(?:my|our|the|a|your)\s+)?(?:shopping\s+)?(?:basket|cart)\b',
+    r'(?:remove|delete)\s+.+\bfrom\s+(?:(?:my|our|the|a|your)\s+)?(?:shopping\s+)?(?:basket|cart)\b',
+    r'(?:click|tap|fill|submit)\s+.*\b(?:form|field|button|link|website|page|checkout|application|request)\b',
+    r'(?:check\s*out|checkout)(?:\s+(?:now|please))?[.!?\s]*$',
+    r'(?:complete|finish|confirm|proceed\s+to)\s+(?:(?:the|my|this)\s+)?(?:checkout|order|purchase|booking)\b',
+    r'pay\s+.*\b(?:order|invoice|bill|subscription)\b',
+    r'(?:send|post|publish|reply)\s+.*\b(?:email|e-mail|message|reply|comment|review|post|enquiry|inquiry|invitation|it|this|that|them)\b',
+    r'(?:upload|download)\s+.*\b(?:file|report|invoice|receipt|photo|image|document|attachment|it|this|that|them)\b',
+)
+
+
 def browser_action_requested(message: str) -> bool:
-    """Recognize direct basket additions without treating comparisons as actions."""
+    """Route clear action requests before model classification, including mixed tasks."""
     text = message.strip().casefold()
     if re.match(r'^(?:please\s+)?(?:(?:can|could|would|will) you\s+)?(?:please\s+)?'
-                r'(?:how|what|why|explain|describe|tell me|write|draft|translate|summarize|'
+                r'(?:how|what|why|explain|describe|tell me|translate|summarize|'
                 r'implement|code|debug|test)\b', text):
         return False
-    text = re.sub(r'```[\s\S]*?```|`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’|(?<!\w)\x27[^\x27\n]+\x27(?!\w)', '', text)
+    # Keep quoted product names as objects without interpreting their contents as commands.
+    text = re.sub(r'```[\s\S]*?```|`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’|(?<!\w)\x27[^\x27\n]+\x27(?!\w)', ' quoted_content ', text)
     for match in re.finditer(
         r'(?:^|[.!?;,\n]\s*|\b(?:and|then|also)\s+)'
+        r'(?:(?:and|then|also)\s+)*'
         r'(?:(?:please|just)\s+)*'
         r'(?:(?:can|could|would|will)\s+you\s+|'
-        r'(?:i\s+(?:want|need)|i[\x27’]d\s+like)\s+you\s+to\s+)?'
+        r'(?:i\s+(?:want|need)|i[\x27’]d\s+like)\s+(?:you\s+)?to\s+)?'
         r'(?:(?:please|just)\s+)*'
-        r'(?:add|put|place)\s+(?P<item>[^.!?;\n]{1,200}?)\b(?:to|into|in)\s+'
-        r'(?:(?:my|our|the|a|your)\s+)?(?:shopping\s+)?(?:basket|cart)\b'
-        r'(?!\s+(?:page|component|button|feature|function|class|code)\b)', text):
-        clause_prefix = re.split(r'[.!?;,\n]', text[:match.start('item')])[-1]
+        r'(?P<action>[a-z]+)\b', text):
+        clause_prefix = re.split(r'[.!?;,\n]', text[:match.start('action')])[-1]
         if re.search(r"\b(?:do not|don't|don’t|never|not to|without|avoid)\b", clause_prefix):
             continue
-        if re.search(r'\b(?:button|component|feature|function|class|code|handler|method|endpoint|widget)\b', match['item']):
+        separators = r'[.!?;\n]' if match['action'] in {'add', 'put', 'place', 'remove', 'delete'} else r'[.!?;,\n]|\b(?:and|then|also)\b'
+        action = re.split(separators, text[match.start('action'):], maxsplit=1)[0].strip()
+        if (re.match(r'(?:add|put|place|remove|delete)\b', action)
+                and re.search(r'\b(?:cart|basket)\b', action)
+                and re.search(r'\b(?:button|component|feature|function|class|code|handler|method|endpoint|widget)\b', action)):
             continue
-        return True
+        if re.match(r'order\b', action) and re.search(
+                r'\b(?:results|names|numbers|rows|columns|alphabetically|chronologically|ascending|descending)\b'
+                r'|\bby\s+(?:price|name|date|size|rating)\b', action):
+            continue
+        if any(re.match(pattern, action) for pattern in _BROWSER_ACTION_PATTERNS):
+            return True
     return False
+
+
+def uncertain_workflow(message: str) -> tuple[Literal['research', 'browser'], str]:
+    """Break routing ties locally; only clear interaction requests justify a browser."""
+    text = re.sub(r'```[\s\S]*?```|`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’|(?<!\w)\x27[^\x27\n]+\x27(?!\w)', '', message).strip().casefold()
+    if browser_preference(text) is False:
+        return 'research', 'explicit_opt_out'
+    if browser_action_requested(message):
+        return 'browser', 'browser_action'
+    if re.search(r"\b(?:draft|write|rewrite|translate|summarize|explain|implement|code|debug|test)\b", text):
+        return 'research', 'content_only'
+    text = re.sub(r'^(?:please\s+)?(?:(?:can|could|would|will) you\s+)?(?:please\s+)?', '', text)
+    if re.match(r'^(?:how|what|why|describe|tell me)\b', text):
+        return 'research', 'information_request'
+    if re.search(r"\b(?:do not|don't|don’t|never|without|avoid|not to)\b", text):
+        return 'research', 'negated_interaction'
+    if re.match(r'^(?:sign|log)\s+in\b', text):
+        return 'browser', 'website_interaction'
+    if re.match(r'^(?:click|tap|fill|submit)\b', text) and re.search(
+            r'\b(?:form|field|button|link|website|page|checkout)\b', text):
+        return 'browser', 'website_interaction'
+    if re.match(r'^(?:book|reserve|cancel|reschedule)\b', text) and re.search(
+            r'\b(?:appointment|booking|reservation|table|room|hotel|flight|ticket)\b', text):
+        return 'browser', 'booking_action'
+    if re.match(r'^(?:check|find|show|view|open|look|see)\b', text):
+        if re.search(r'\b(?:appointment slots?|time slots?|booking calendar|available appointments?|account status)\b', text):
+            return 'browser', 'live_site_state'
+        if re.search(r'\bavailability\b', text) and re.search(
+                r'\b(?:staff|appointment|calendar|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\b\d{4}-\d{2}-\d{2}\b', text):
+            return 'browser', 'dated_availability'
+    return 'research', 'search_first'
 
 
 class RouteDecision(BaseModel):
@@ -80,6 +149,12 @@ class RouteDecision(BaseModel):
 
 class DecisionUnavailable(Exception):
     """The caller must use the generative classifier fallback."""
+
+
+class DecisionUncertain(DecisionUnavailable):
+    def __init__(self, decision: RouteDecision):
+        super().__init__('Routing confidence is below threshold')
+        self.decision = decision
 
 
 def decide(message: str, context: str = "") -> RouteDecision:
@@ -112,15 +187,15 @@ def decide(message: str, context: str = "") -> RouteDecision:
             payload = response.json()
         workflow = payload["answers"]["workflow"]
         deep = payload["answers"]["deep"]
-        confidence = min(float(workflow["confidence"]), float(deep["confidence"]))
+        confidence = float(workflow["confidence"])
         decision = RouteDecision(
             workflow=workflow["choice"],
-            deep_recommended=float(deep["noul"]) >= 0.8,
+            deep_recommended=float(deep["noul"]) >= 0.8 and float(deep["confidence"]) >= ROUTING_CONFIDENCE_THRESHOLD,
             confidence=confidence,
             usage=payload.get("usage", {}),
         )
-        if confidence < 0.8:
-            raise DecisionUnavailable("Routing confidence is below threshold")
+        if confidence < ROUTING_CONFIDENCE_THRESHOLD:
+            raise DecisionUncertain(decision)
         return decision
     except (httpx.HTTPError, ValueError, KeyError, TypeError, ValidationError) as exc:
         raise DecisionUnavailable("Decisions API unavailable or returned an invalid response") from exc

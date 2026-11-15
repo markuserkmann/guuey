@@ -6,10 +6,9 @@ import time
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlsplit
 
-from playwright.async_api import Error, TimeoutError as PlaywrightTimeout
-
 from app.browser.config import BrowserSettings, BrowserUnavailable
 from app.browser.connection import BrowserResources
+from app.browser.driver import BROWSER_ERRORS, BROWSER_TIMEOUTS, PlaywrightTimeout
 from app.browser.consent import dismiss_cookie_dialog
 from app.browser.guard import check_url, is_card_field, is_final_control, secret_allowed, site_of
 from app.browser.observe import Observation, observe, reframe, scrub
@@ -39,7 +38,7 @@ def interaction_error(error):
     elif 'detached' in message or 'not attached' in message or 'No element found' in message:
         code = 'stale_ref'
     else:
-        code = 'timeout' if isinstance(error, PlaywrightTimeout) else 'navigation_failed'
+        code = 'timeout' if isinstance(error, BROWSER_TIMEOUTS) else 'navigation_failed'
     reason = next((line.strip() for line in message.splitlines()
                    if 'intercepts pointer events' in line), message.splitlines()[0] if message else code)
     return code, reason
@@ -253,7 +252,7 @@ class BrowserDeps:
     async def settle(self):
         try:
             await self.page.wait_for_load_state('domcontentloaded', timeout=15_000)
-        except PlaywrightTimeout:
+        except BROWSER_TIMEOUTS:
             pass
         await asyncio.sleep(0.5)
 
@@ -311,7 +310,7 @@ class BrowserDeps:
                 self.stop('needs_user', 'browser_needs_user', str(exc))
             except (ValueError, BrowserUnavailable) as exc:
                 note, code, status = self.clean(exc), 'invalid_input', 'error'
-            except Error as exc:
+            except BROWSER_ERRORS as exc:
                 message = str(exc)
                 if '1337' in message and 'Invalid target' in message:
                     self.stop('blocked', 'browser_blocked', 'This site is restricted on the browser provider.')
@@ -332,7 +331,7 @@ class BrowserDeps:
                                                      offset=arguments.get('offset', 0) if tool == 'inspect' else 0,
                                                      ref=arguments.get('ref') if tool == 'inspect' else None,
                                                      wait_for_frames=tool in {'open', 'back'})
-            except Error:
+            except BROWSER_ERRORS:
                 observation = 'The page could not be observed. Wait or stop the task.'
                 status, code = 'error', code or 'navigation_failed'
             unchanged = (bool(self.observation and self.observation.unchanged)
@@ -539,7 +538,7 @@ class BrowserDeps:
         async def visible(frame):
             try:
                 return await frame.get_by_text(text, exact=False).first.is_visible()
-            except Error:
+            except BROWSER_ERRORS:
                 return False
 
         try:

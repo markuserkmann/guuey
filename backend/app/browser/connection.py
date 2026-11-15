@@ -6,9 +6,8 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from urllib.parse import quote
 
-from playwright.async_api import Error, async_playwright
-
 from app.browser.config import BrowserUnavailable
+from app.browser.driver import BROWSER_ERRORS, automation
 from app.browser.guard import check_url
 from app.secrets import redact
 
@@ -56,7 +55,7 @@ async def connect(pw, settings):
     for attempt in range(6):
         try:
             return await pw.chromium.connect_over_cdp(url, headers=headers, timeout=60_000)
-        except Error as exc:
+        except BROWSER_ERRORS as exc:
             message = str(exc)
             if attempt == 5 or BAD_REQUEST.search(message) or not RETRYABLE.search(message):
                 message = message.replace(headers['Authorization'], '[redacted]').replace(headers['Authorization'][6:], '[redacted]')
@@ -67,7 +66,7 @@ async def connect(pw, settings):
 @asynccontextmanager
 async def open_browser(settings, on_network_error=None, request_guard=None, *, resources=None):
     resources = resources if resources is not None else BrowserResources()
-    async with async_playwright() as pw:
+    async with automation(settings.driver) as pw:
         browser = None
         try:
             if settings.backend == 'local':
@@ -112,10 +111,10 @@ async def open_browser(settings, on_network_error=None, request_guard=None, *, r
                 finally:
                     await cdp.detach()
             yield page, live_view
-        except Error as exc:
+        except BROWSER_ERRORS as exc:
             raise BrowserUnavailable(redact(str(exc))) from None
         finally:
             if browser is not None:
-                with suppress(Error, TimeoutError):
+                with suppress(*BROWSER_ERRORS, TimeoutError):
                     async with asyncio.timeout(10):
                         await browser.close()

@@ -31,6 +31,7 @@ def _positive_int(name, default, maximum):
 class BrowserSettings:
     enabled: bool = False
     backend: Literal['oxylabs', 'local'] = 'oxylabs'
+    driver: Literal['playwright', 'patchright'] = 'playwright'
     username: str = field(default='', repr=False)
     password: str = field(default='', repr=False)
     web_api_key: str = field(default='', repr=False)
@@ -53,6 +54,9 @@ class BrowserSettings:
         backend = os.getenv('BROWSER_BACKEND', '').strip() or 'oxylabs'
         if backend not in {'oxylabs', 'local'}:
             raise ValueError('BROWSER_BACKEND must be oxylabs or local')
+        driver = os.getenv('BROWSER_DRIVER', '').strip().lower() or 'playwright'
+        if driver not in {'playwright', 'patchright'}:
+            raise ValueError('BROWSER_DRIVER must be playwright or patchright')
         country = os.getenv('BROWSER_COUNTRY', '').strip().upper()
         if country and not re.fullmatch('[A-Z]{2}', country):
             raise ValueError('BROWSER_COUNTRY must be a two-letter country code')
@@ -66,7 +70,7 @@ class BrowserSettings:
             except re.error:
                 raise ValueError('BROWSER_FINAL_ACTION_PATTERNS must be a valid regular expression') from None
         return cls(
-            enabled=_boolean('BROWSER_ENABLED', False), backend=backend,
+            enabled=_boolean('BROWSER_ENABLED', False), backend=backend, driver=driver,
             username=os.getenv('OXY_AB_USERNAME', ''), password=os.getenv('OXY_AB_PASSWORD', ''),
             web_api_key=os.getenv('OXYLAB_KEY', '') or os.getenv('OXYLABS_WEB_API_KEY', ''),
             country=country, model=os.getenv('BROWSER_MODEL', '').strip() or 'gemini-3.5-flash-lite',

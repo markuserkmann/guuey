@@ -10,12 +10,26 @@ import type { ChatMessage } from "../chatApi";
 import { Message } from "./Message";
 import { Icon } from "./Icon";
 
-function RuntimeMessage({ onRetry }: { onRetry: () => void }) {
+function RuntimeMessage({
+  onRetry,
+  activity,
+  activeMessageId,
+}: {
+  onRetry: () => void;
+  activity?: ReactNode;
+  activeMessageId?: string;
+}) {
   const message = useAuiState(
     (state) => state.message.metadata.custom.record as ChatMessage | undefined,
   );
   if (!message) return null;
-  return <Message message={message} onRetry={onRetry} />;
+  return (
+    <Message
+      message={message}
+      onRetry={onRetry}
+      activity={message.id === activeMessageId ? activity : undefined}
+    />
+  );
 }
 
 export function Conversation({
@@ -24,6 +38,8 @@ export function Conversation({
   onSend,
   onRetry,
   onCancel,
+  activity,
+  activeMessageId,
   children,
 }: {
   messages: ChatMessage[];
@@ -31,6 +47,8 @@ export function Conversation({
   onSend: (content: string) => Promise<void>;
   onRetry: () => void;
   onCancel: () => Promise<void>;
+  activity?: ReactNode;
+  activeMessageId?: string;
   children: ReactNode;
 }) {
   const runtime = useExternalStoreRuntime({
@@ -69,7 +87,13 @@ export function Conversation({
           aria-label="Conversation"
         >
           <ThreadPrimitive.Messages>
-            {() => <RuntimeMessage onRetry={onRetry} />}
+            {() => (
+              <RuntimeMessage
+                onRetry={onRetry}
+                activity={activity}
+                activeMessageId={activeMessageId}
+              />
+            )}
           </ThreadPrimitive.Messages>
           {children}
         </ThreadPrimitive.Viewport>

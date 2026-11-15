@@ -18,27 +18,28 @@ from app.runs import RunStore
 from app.store import ChatStore
 
 
-@pytest.fixture(scope='module')
-def chromium_available():
+@pytest.fixture(scope='module', params=['playwright', 'patchright'])
+def chromium_available(request):
     async def probe():
-        async with open_browser(BrowserSettings(backend='local')):
+        async with open_browser(BrowserSettings(backend='local', driver=request.param)):
             pass
     try:
         asyncio.run(probe())
     except BrowserUnavailable as exc:
         if "Executable doesn't exist" in str(exc):
-            pytest.skip('Install the locked Playwright Chromium version to run browser fixtures')
+            pytest.skip(f'Install Chromium with uv run {request.param} install chromium to run browser fixtures')
         if 'Operation not permitted' in str(exc):
             pytest.skip('This execution sandbox does not permit Chromium startup')
         raise
+    return request.param
 
 
-def fixture_store(tmp_path):
+def fixture_store(tmp_path, driver):
     runs = RunStore(str(tmp_path / 'flows.sqlite3'))
     chat = ChatStore(str(runs.path)).create('owner')
     run = runs.create('owner', chat['id'], 'request', 'Order one pizza', 'auto')
     runs.claim()
-    settings = BrowserSettings(backend='local', session_key='ab' * 32)
+    settings = BrowserSettings(backend='local', driver=driver, session_key='ab' * 32)
     store = BrowserStore(runs, settings)
     store.start('owner', run['id'])
     return store, run['id'], settings
@@ -46,7 +47,7 @@ def fixture_store(tmp_path):
 
 def test_real_accessibility_refs(chromium_available):
     async def flow():
-        async with open_browser(BrowserSettings(backend='local')) as (page, _):
+        async with open_browser(BrowserSettings(backend='local', driver=chromium_available)) as (page, _):
             await page.set_content('<button onclick="this.textContent=\'Selected\'">Choose</button>')
             observation = await observe(page)
             ref = re.search(r'\[ref=(e\d+)\]', observation.snapshot)[1]
@@ -57,7 +58,7 @@ def test_real_accessibility_refs(chromium_available):
 
 @pytest.mark.parametrize('frame', [False, True])
 def test_custom_listbox_selection_is_scoped_and_idempotent(chromium_available, tmp_path, frame):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             body = '''<button role="combobox" aria-label="Size" aria-haspopup="listbox" aria-expanded="false"
@@ -66,8 +67,9 @@ def test_custom_listbox_selection_is_scoped_and_idempotent(chromium_available, t
                 <ul role="listbox" id="menu" hidden>
                 <li role="option" aria-selected="true" onclick="pick(this)">Small</li>
                 <li role="option" aria-selected="false" onclick="pick(this)">Large</li></ul>
-                <script>window.selections=0;function pick(option){
-                  selections++;for(const item of menu.children)item.setAttribute('aria-selected',String(item===option));
+                <script>document.body.dataset.selections=0;function pick(option){
+                  document.body.dataset.selections=Number(document.body.dataset.selections)+1;
+                  for(const item of menu.children)item.setAttribute('aria-selected',String(item===option));
                   const input=document.querySelector('button');input.textContent=option.textContent;
                   input.setAttribute('aria-expanded','false');menu.hidden=true;}</script>'''
             async def website(route):
@@ -82,14 +84,14 @@ def test_custom_listbox_selection_is_scoped_and_idempotent(chromium_available, t
                 assert deps.debug['browser']['last_step']['status'] == 'ok'
             document = page.frames[1] if frame else page
             assert await document.get_by_role('combobox').inner_text() == 'Large'
-            assert await document.evaluate('window.selections') == 1
+            assert await document.locator('body').get_attribute('data-selections') == '1'
     asyncio.run(flow())
 
 
 @pytest.mark.parametrize('placeholder,allowed,path', [('Hae tuotteita...', True, '/search'),
     ('Search products', True, '/search'), ('Email', False, '/search'), ('Search', False, '/checkout')])
 def test_enter_search_without_form_keeps_checkout_and_non_search_guards(chromium_available, tmp_path, placeholder, allowed, path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             async def website(route):
@@ -109,7 +111,7 @@ def test_enter_search_without_form_keeps_checkout_and_non_search_guards(chromium
 
 @pytest.mark.parametrize('late_frame', [False, True])
 def test_text_wait_finds_embedded_form_without_exhausting_timeout(chromium_available, tmp_path, late_frame):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
 
     async def flow():
         async with open_browser(settings) as (page, _):
@@ -135,7 +137,7 @@ def test_text_wait_finds_embedded_form_without_exhausting_timeout(chromium_avail
 
 
 def test_control_checks_preserve_other_field_refs(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             await page.set_content('<label>Name<input></label><label>Condition<input></label>'
@@ -154,7 +156,7 @@ def test_control_checks_preserve_other_field_refs(chromium_available, tmp_path):
 
 
 def test_frame_refs_fill_select_and_click(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             async def website(route):
@@ -184,7 +186,7 @@ def test_frame_refs_fill_select_and_click(chromium_available, tmp_path):
 
 
 def test_main_frame_refs_after_navigation_failure(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             async def website(route):
@@ -210,7 +212,7 @@ def test_main_frame_refs_after_navigation_failure(chromium_available, tmp_path):
 
 
 def test_frame_portal_keeps_foreground_controls(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             async def website(route):
@@ -232,7 +234,7 @@ def test_frame_portal_keeps_foreground_controls(chromium_available, tmp_path):
 
 
 def test_frame_controls_respect_authenticated_site_scope(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             async def website(route):
@@ -256,7 +258,7 @@ def test_frame_controls_respect_authenticated_site_scope(chromium_available, tmp
 @pytest.mark.parametrize('popup', [False, True])
 def test_portal_inspection_preserves_page_refs(chromium_available, popup):
     async def flow():
-        async with open_browser(BrowserSettings(backend='local')) as (page, _):
+        async with open_browser(BrowserSettings(backend='local', driver=chromium_available)) as (page, _):
             await page.set_content('<button>Account</button><div role="region" id="portal-toast"></div>'
                                    + ('<div role="region" id="portal-product"><button>Add to basket</button></div>'
                                       if popup else ''))
@@ -273,7 +275,7 @@ def test_portal_inspection_preserves_page_refs(chromium_available, popup):
 @pytest.mark.parametrize('decision', ['approve', 'decline'])
 @pytest.mark.parametrize('framed', [False, True])
 def test_real_order_flow(chromium_available, tmp_path, decision, framed):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     orders = []
     async def flow():
         async with open_browser(settings) as (page, _):
@@ -325,7 +327,7 @@ def test_real_order_flow(chromium_available, tmp_path, decision, framed):
 
 
 def test_real_saved_cookie_is_sent(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     store.save_session('owner', 'example.com', {'cookies': [
         {'name': 'session', 'value': 'fixture-session', 'domain': 'browser.example.com', 'path': '/', 'secure': True},
     ], 'origins': []}, 'unverified')
@@ -343,7 +345,7 @@ def test_real_saved_cookie_is_sent(chromium_available, tmp_path):
 @pytest.mark.parametrize('label', ['Allow', 'Use only necessary', 'Hylkää', 'Hyväksyn'])
 def test_cookie_dismissal_unlocks_address_dialog(chromium_available, label):
     async def flow():
-        async with open_browser(BrowserSettings(backend='local')) as (page, _):
+        async with open_browser(BrowserSettings(backend='local', driver=chromium_available)) as (page, _):
             await page.set_content('''
                 <button onclick="document.querySelector('#address').showModal()">Choose address</button>
                 <main>''' + '<p>Catalog item</p>' * 14000 + '''</main>
@@ -364,7 +366,7 @@ def test_cookie_dismissal_unlocks_address_dialog(chromium_available, label):
 @pytest.mark.parametrize('cookie', [False, True])
 def test_consent_does_not_claim_unrelated_or_failed_dismissal(chromium_available, cookie):
     async def flow():
-        async with open_browser(BrowserSettings(backend='local')) as (page, _):
+        async with open_browser(BrowserSettings(backend='local', driver=chromium_available)) as (page, _):
             await page.set_content('<div role="dialog">' + ('Cookies' if cookie else 'Location permission')
                                    + '<button onclick="this.remove()">Allow</button></div>')
             async def active(): pass
@@ -376,7 +378,7 @@ def test_consent_does_not_claim_unrelated_or_failed_dismissal(chromium_available
 
 
 def test_real_address_combobox_selection_before_continue(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             html = '''<main>''' + '<p>Catalog item</p>' * 14000 + '''</main>

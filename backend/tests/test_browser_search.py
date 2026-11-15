@@ -146,7 +146,7 @@ def test_observed_relative_and_quoted_links_preserve_the_exact_query():
 
 
 def test_checkout_review_button_is_not_mistaken_for_a_form_submission(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             async def website(route):
@@ -162,7 +162,7 @@ def test_checkout_review_button_is_not_mistaken_for_a_form_submission(chromium_a
 
 
 def test_quantity_changes_are_progress_even_without_a_spinbutton_role(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             await page.set_content('<span id="quantity">1</span><button onclick="quantity.textContent=Number(quantity.textContent)+1">Increase guests</button>')
@@ -178,7 +178,7 @@ def test_quantity_changes_are_progress_even_without_a_spinbutton_role(chromium_a
 @pytest.mark.parametrize('markup', ['<input type="submit" value="Place order">',
                                   '<button><img alt="Place order"></button>'])
 def test_native_and_image_control_names_keep_final_action_guard(chromium_available, tmp_path, markup):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             await page.set_content(markup)
@@ -194,7 +194,7 @@ def test_native_and_image_control_names_keep_final_action_guard(chromium_availab
 
 
 def test_new_tab_becomes_active_and_back_restores_search_and_filters(chromium_available, tmp_path):
-    store, run_id, settings = fixture_store(tmp_path)
+    store, run_id, settings = fixture_store(tmp_path, chromium_available)
     async def flow():
         async with open_browser(settings) as (page, _):
             async def website(route):

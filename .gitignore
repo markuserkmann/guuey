@@ -22,3 +22,4 @@ backend/evaluations/*
 !backend/evaluations/score_quality.py
 !backend/evaluations/gold/
 !backend/evaluations/gold/**
+.impeccable

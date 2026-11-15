@@ -32,8 +32,9 @@ class RefinementComplete(Exception):
     pass
 
 
-def run_turn(message: str, history: list[ChatTurn], *, search_requested: bool, seed_sources: list[dict] | None = None, contract: ResearchContract | None = None, verification_cache: dict | None = None, attempted_queries: set[str] | None = None, prior_answer: dict | None = None, retrieval_state: dict | None = None) -> TurnResult:
+def run_turn(message: str, history: list[ChatTurn], *, search_requested: bool, seed_sources: list[dict] | None = None, contract: ResearchContract | None = None, verification_cache: dict | None = None, attempted_queries: set[str] | None = None, prior_answer: dict | None = None, retrieval_state: dict | None = None, fresh_required: bool = False) -> TurnResult:
     started = monotonic()
+    force_fresh = fresh_required
     intent = classify_turn(search_requested=search_requested)
     sources: list[dict[str, str]] = []
     plan_debug = None
@@ -53,6 +54,8 @@ def run_turn(message: str, history: list[ChatTurn], *, search_requested: bool, s
 
     def fetch(urls, **options):
         nonlocal contents_calls, live_pages_requested
+        if force_fresh:
+            options.update(fresh=True, bypass_cache=True)
         identity = (options.get('fresh', False), tuple(options.get('subpage_targets', [])))
         urls = list(dict.fromkeys(url for url in urls if (url, identity) not in crawled))
         if options.get('fresh'):
@@ -81,7 +84,7 @@ def run_turn(message: str, history: list[ChatTurn], *, search_requested: bool, s
             direct_started = monotonic()
             if contract.shopping:
                 domains = {source_domain(f['source_url']) for f in prior_answer.get('findings', []) if f.get('source_url')}
-                cached_policies = [page for domain in domains for page in policy_sources(domain)]
+                cached_policies = [] if force_fresh else [page for domain in domains for page in policy_sources(domain)]
                 known = {s['url']: s for s in seed_sources or []}
                 for page in cached_policies:
                     known.setdefault(page['url'], page)
@@ -141,7 +144,7 @@ def run_turn(message: str, history: list[ChatTurn], *, search_requested: bool, s
         if plan_debug:
             plan_debug["effective_contract"] = contract.model_dump()
         started = monotonic()
-        fresh_required = contract.activity in {"product", "service"} or any(r.kind in {"price", "availability"} for r in contract.requirements)
+        fresh_required = fresh_required or contract.activity in {"product", "service"} or any(r.kind in {"price", "availability"} for r in contract.requirements)
         if urls:
             sources = fetch(urls, fresh=fresh_required or page_question, focus=message)
         else:
@@ -192,7 +195,7 @@ def run_turn(message: str, history: list[ChatTurn], *, search_requested: bool, s
                     raise failures[0]
                 raise SearchUnavailable("Exa did not return readable search results for this request.")
             sources = diverse_sources([*sources, *collected.values()], 24 if contract.shopping else 30)
-            cached = {source["url"]: source for source in (seed_sources or [])
+            cached = {} if force_fresh else {source["url"]: source for source in (seed_sources or [])
                       if (live_source(source) if fresh_required else source.get("retrieval") == "page")}
             reused_pages = sum(source['url'] in cached for source in sources)
             sources = [cached.get(source['url'], source) for source in sources]
@@ -203,7 +206,8 @@ def run_turn(message: str, history: list[ChatTurn], *, search_requested: bool, s
                                      {r.id for r in contract.requirements if r.kind in {'price', 'stock', 'availability'}}
                                      for check in finding.get('checks', []))}
                 pending = [source for source in sources if source['url'] not in cached
-                           and offer_source(source, contract) and (not prior_answer or source['url'] in unresolved)]
+                           and (force_fresh or offer_source(source, contract))
+                           and (force_fresh or not prior_answer or source['url'] in unresolved)]
             else:
                 pending = [source for source in sources if not source.get('text', '').strip()]
             try:
@@ -243,7 +247,7 @@ def run_turn(message: str, history: list[ChatTurn], *, search_requested: bool, s
                 sellers = dict.fromkeys(f"{urlsplit(s['url']).scheme}://{urlsplit(s['url']).netloc}/"
                                         for s in sources if offer_source(s, contract))
             known_policy_domains = {source_domain(s['url']) for s in [*(seed_sources or []), *sources] if usable_policy(s)}
-            cached_policies = [page for homepage in sellers for page in policy_sources(source_domain(homepage))
+            cached_policies = [] if force_fresh else [page for homepage in sellers for page in policy_sources(source_domain(homepage))
                                if source_domain(homepage) not in known_policy_domains]
             sources.extend(page for page in cached_policies if page['url'] not in {s['url'] for s in sources})
             known_policy_domains.update(source_domain(page['url']) for page in cached_policies)
@@ -276,12 +280,21 @@ def run_turn(message: str, history: list[ChatTurn], *, search_requested: bool, s
         prioritized = [s for url, s in combined.items() if url in priority_urls]
         others = diverse_sources([s for url, s in combined.items() if url not in priority_urls], 30)
         sources = prioritized + others[:max(0, 30 - len(prioritized))]
+    excluded_non_live_sources = 0
+    if force_fresh:
+        live_pages = [source for source in sources if live_source(source) and not source.get('cache_hit')]
+        excluded_non_live_sources = len(sources) - len(live_pages)
+        sources = live_pages
+        if not sources:
+            raise SearchUnavailable("No live source pages could be retrieved for this check. Cached evidence was not used.")
     retrieval_seconds = round(monotonic() - started + direct_seconds, 2)
     retrieval = {"sources": len(sources), "domains": len({source_domain(s["url"]) for s in sources}),
                  "live_pages": sum(live_source(s) for s in sources), "elapsed_seconds": retrieval_seconds,
                  "cache_hits": sum(bool(s.get('cache_hit')) for s in sources),
                  "reused_pages": reused_pages, "search_failures": search_failures,
                  "extraction_failures": extraction_failures, "policy_pages": policy_pages, "offer_pages": offer_pages, "contents_calls": contents_calls}
+    if force_fresh:
+        retrieval.update(cache_bypassed=True, excluded_non_live_sources=excluded_non_live_sources)
     observer = model_call_events.get()
     if observer and search_requested:
         observer({"stage": "retrieval", "status": "completed", "search_plan": plan_debug,

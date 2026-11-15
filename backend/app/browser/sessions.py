@@ -1,10 +1,9 @@
 import json
 from urllib.parse import urlsplit
 
-from playwright.async_api import Error
-
 from app.browser.config import BrowserUnavailable
 from app.browser.connection import open_browser
+from app.browser.driver import BROWSER_ERRORS
 from app.browser.cookies import filter_storage_state
 from app.browser.guard import check_url, site_of
 from app.browser.observe import observe
@@ -79,5 +78,5 @@ async def verify_login(settings, state, url, quote, active):
                         return None
                     fresh = filter_storage_state(await page.context.storage_state(), site)
                     return fresh if has_state(fresh) else None
-    except (Error, BrowserUnavailable, ValueError):
+    except (*BROWSER_ERRORS, BrowserUnavailable, ValueError):
         return None

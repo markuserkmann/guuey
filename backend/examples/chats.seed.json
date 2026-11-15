@@ -1,0 +1,13 @@
+{
+  "chats": [
+    {
+      "key": "welcome-v1",
+      "title": "Getting started",
+      "pinned": true,
+      "messages": [
+        { "role": "user", "content": "What can I do here?" },
+        { "role": "assistant", "content": "Ask a question or continue this conversation." }
+      ]
+    }
+  ]
+}

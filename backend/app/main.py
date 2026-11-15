@@ -6,7 +6,8 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import request_validation_exception_handler
 
-from app.auth import require_api_key, valid_api_token
+from app.auth import require_api_key, valid_api_token, router as auth_router
+from app.accounts import get_accounts
 from app.attachments import Attachments, attachment_context
 from app.chat import ModelUnavailable, api_key, model_name
 from app.orchestration.orchestrator import run_turn
@@ -27,13 +28,22 @@ from app.browser.cookies import parse_cookies
 from app.browser.guard import site_of
 from app.browser.schemas import ActionResolution, BrowserResponse, CookieImportRequest
 from app.browser.store import BrowserStore, SessionConflict
+from app.transcription import router as transcription_router
+from app.task_api import router as task_router
+from app.telegram_api import router as telegram_router
 
 app = FastAPI(title="Guuey API")
+app.include_router(auth_router)
+app.include_router(transcription_router)
+app.include_router(task_router)
+app.include_router(telegram_router)
 Owner = Depends(require_api_key)
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
+    if request.url.path.startswith('/api/auth/'):
+        return JSONResponse(status_code=422, content={'detail': 'Invalid sign-in request'})
     if request.url.path.startswith('/api/browser/') or '/browser/requests/' in request.url.path:
         # Validation errors must not echo pasted cookies or private input values.
         return JSONResponse(status_code=422, content={'detail': 'Invalid browser request body'})
@@ -53,7 +63,7 @@ def health() -> HealthResponse:
         status="ok",
         mode="gemini" if configured else "mock",
         model=model_name() if configured else "local mock",
-        auth_configured=valid_api_token(os.getenv("AGENT_API_TOKEN", "")),
+        auth_configured=valid_api_token(os.getenv("AGENT_API_TOKEN", "")) or get_accounts().has_users(),
         exa_configured=bool(os.getenv("EXA_API_KEY")),
         browser_enabled=browser.enabled,
         saved_logins_enabled=browser.saved_logins_enabled,
@@ -66,8 +76,10 @@ def list_chats(query: str = Query(default="", max_length=100), owner: str = Owne
 
 
 @app.get("/api/session")
-def session(owner: str = Owner):
-    return {"authenticated": True}
+def session(response: Response, owner: str = Owner):
+    response.headers["Cache-Control"] = "no-store"
+    user = get_accounts().user(owner)
+    return {"authenticated": True, **({"user": user} if user else {})}
 
 
 @app.post("/api/chats", response_model=ChatSummary, status_code=201)
@@ -124,6 +136,7 @@ from app.runs import RunStore
 class CreateRunRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
     mode: Literal["auto", "fast", "deep"] = "auto"
+    force_browser: bool = False
     request_id: UUID
     attachments: Attachments = Field(default_factory=list)
     timezone: str = Field(default="UTC", max_length=100)
@@ -147,7 +160,8 @@ def owned_run(owner, run_id):
 def create_run(chat_id: str, body: CreateRunRequest, owner: str = Owner):
     try:
         return get_runs().create(owner, chat_id, str(body.request_id), body.message, body.mode,
-                                 attachments=[file.model_dump() for file in body.attachments], timezone=body.timezone)
+                                 attachments=[file.model_dump() for file in body.attachments], timezone=body.timezone,
+                                 force_browser=body.force_browser)
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
@@ -190,7 +204,7 @@ def continue_run(run_id: str, owner: str = Owner):
     run = owned_run(owner, run_id)
     try:
         return get_runs().create(owner, run["chat_id"], f"continue:{run_id}", run["message"], "deep", run_id,
-                                attachments=run["attachments"], timezone=run['timezone'])
+                                attachments=run["attachments"], timezone=run['timezone'], force_browser=run['force_browser'])
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 

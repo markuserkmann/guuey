@@ -1,0 +1,54 @@
+Response progress validation (2026-11-15)
+
+Scope: the current response's activity display, streamed content and completion.
+Direction: retain Guuey's dark chat, system type and compact monochrome controls.
+ENERGY 1 / RHYTHM 1 / MOTION 2. Motion is limited to the existing working spinner;
+Stop ends the run, and reduced-motion preferences disable the animation.
+The status stays above the current answer while scrolling. A thin divider separates
+activity from content; the spinner, pause, stop and check icons identify real states.
+Browser details use a disclosure to keep the answer readable. Pending requests stay
+outside the disclosure; uncertain action results expand the disclosure automatically.
+
+PASS R-02: Added interface copy contains no em dashes or decorative emoji.
+PASS R-03: Chromium checked 320, 390, 760, 1024 and 1440px without document or
+conversation horizontal overflow. Desktop and mobile screenshots were inspected.
+PASS R-17/R-18/R-23/R-36/R-38: No assets or factual claims invented.
+Mock answer text appears only in test fixtures.
+PASS R-24/R-26: Stop cancels the run; browser details and nested step history open
+and close using keyboard and pointer interaction. No navigation added.
+PASS R-25: Status title #eeeeee and supporting text #b5b5b5 on #171717 exceed
+4.5:1 contrast. Existing tokens supply the entire palette.
+PASS R-27: Browser tests exercised first progress, draft, handoff, reconnect,
+waiting for input, completion, partial result, failure and cancellation.
+PASS R-28: No FAQ added.
+PASS R-32: Keyboard Enter toggles details; visible focus uses the existing outline.
+PASS R-33: All changes are direct edits to TypeScript/TSX/CSS source.
+PASS R-34: Existing single dark theme preserved.
+PASS R-35: TypeScript/Vite production build, 44 frontend tests, changed-file
+Prettier checks and git diff --check passed. Browser fixtures had no page errors.
+PASS R-37: Refinement follows the existing implementation's visual direction.
+PASS R-39: Stop has a 44px target, disabled state and active/hover feedback;
+native summaries support keyboard interaction. Status announcements are polite
+and atomic. Reduced motion checked.
+PASS R-40: No media, third-party scripts or unsupported performance claims added.
+PASS purpose gate: Sticky status keeps work visible during long answers; details
+group browser steps; one answer ID prevents duplicate or stale responses.
+PASS liveliness gate: Existing typography, neutral palette and control treatment
+preserved. Motion signals active work and ends for paused or terminal states.
+PASS craftsmanship: Unknown phases use plain language; incomplete results never
+claim completion; terminal results replace drafts; refresh restores final status.
+
+Parser tests cover split CRLF, bare CR, LF, fragmented UTF-8, no-space event fields,
+multiline JSON, unrelated events/runs, malformed values, incomplete frames and
+terminal snapshots on a connection that remains open.
+
+Mechanical design detector: one warning in the existing .browser-notice left
+border, outside the changed progress UI. No new detector findings.
+
+Browser checks: /tmp/guuey-progress-check.mjs (mocked API and event streams).
+Screenshots: /tmp/guuey-progress-desktop.png, /tmp/guuey-progress-mobile.png,
+/tmp/guuey-progress-complete.png.
+Limitation: no live model, search provider or remote browser task was executed.
+
+Follow-up: removed the elapsed-time display, its interval and its styles at the
+user's request. Working status, spinner and Stop control remain.

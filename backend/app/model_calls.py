@@ -69,7 +69,7 @@ def error_details(exc: Exception) -> dict:
     }
 
 
-def call_model(agent, prompt: str, *, stage: str, model_settings: dict | None = None, on_output: Callable | None = None):
+def call_model(agent, prompt: str, *, stage: str, model_settings: dict | None = None, on_output: Callable | None = None, max_attempts: int = 3):
     from app.research_modes import remaining_seconds, ResearchDeadline
     started = time.monotonic()
     settings = {"request_timeout": REQUEST_TIMEOUTS.get(stage, 60.0), **(model_settings or {})}
@@ -81,7 +81,7 @@ def call_model(agent, prompt: str, *, stage: str, model_settings: dict | None = 
     if on_output:
         settings.setdefault("first_event_timeout", min(45.0, settings["request_timeout"]))
     waited = 0.0
-    for attempt in range(1, 4):
+    for attempt in range(1, max_attempts + 1):
         attempt_started = time.monotonic()
         settings["request_timeout"] = max(0.001, deadline - attempt_started)
         observer = model_call_events.get()
@@ -107,7 +107,7 @@ def call_model(agent, prompt: str, *, stage: str, model_settings: dict | None = 
             delay = details["retry_after"]
             if delay is None:
                 delay = 2 ** attempt + random.uniform(0, 0.5)
-            retry = details["retryable"] and attempt < 3 and waited + delay <= 30 and time.monotonic() + delay < deadline
+            retry = details["retryable"] and attempt < max_attempts and waited + delay <= 30 and time.monotonic() + delay < deadline
             if observer:
                 observer({
                     "stage": stage, "attempt": attempt,

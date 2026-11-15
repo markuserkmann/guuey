@@ -1,0 +1,106 @@
+Telegram linking validation — 2026-11-15
+
+Historical implementation checks, completed before the UI polish below.
+Backend, Docker and live-bot checks were not rerun during the polish or this
+documentation handoff. The 34-test frontend result is the earlier baseline.
+
+Backend: 64 existing auth, run, task-boundary and task-interpretation tests passed.
+Frontend: all 34 existing tests passed; TypeScript and production Vite build passed.
+Docker: docker compose --profile telegram config --quiet passed.
+Diff whitespace check passed.
+
+Isolated temporary SQLite/API verification, with simulated Telegram HTTP responses:
+- Real cookie sessions and CSRF header protection; unauthenticated requests rejected.
+- Owner isolation for status, confirmation and task updates.
+- Short-lived, regenerated and single-use link tokens; private-chat requirement.
+- No active link before same-owner confirmation; one owner per Telegram chat.
+- Per-task opt-in; incomplete/repeated research creates no extra delivery.
+- Real run completion saves inbox entry and delivery together.
+- Correct private-chat destination, excerpt, source links and app link.
+- Persistent queue, polling offset, exclusive worker lease.
+- Telegram retry_after respected; ambiguous read timeout and interrupted send are not resent.
+- Blocked bot produces visible failure; full inbox result remains.
+- Task opt-out, disconnect and /stop cancel pending sends and reset task settings.
+- Disabled accounts receive no deliveries; long emoji messages remain within Telegram's limit.
+
+The isolated verification sent no live Telegram messages.
+Desktop/mobile browser evidence: .impeccable/review/telegram-checks.txt.
+
+Historical live activation:
+- Found existing bot credentials in the server .env during the final configuration check.
+- Telegram getMe authenticated the bot and confirmed the configured username.
+- getWebhookInfo confirmed there is no competing webhook.
+- Started the optional Telegram service with Docker Compose; API is healthy,
+  Telegram worker heartbeat is online and authenticated GET /api/telegram succeeds.
+- APP_PUBLIC_URL is unset. Alerts can send excerpts and source links; the optional
+  link back to Guuey requires that setting.
+- No real task alert was sent as a validation message.
+
+Current UI polish and documentation handoff — 2026-11-15
+
+Independent finish reviewer disposition: ship. The scoped Telegram surface
+required no material fixes. This records the shipped source and the polish
+validation already completed; no tests or browser checks were rerun for this
+documentation pass.
+
+Shipped behavior:
+- Recurring tasks has Tasks, Updates and Telegram views. View navigation is
+  hidden while editing a task; the editor keeps its local draft state.
+- Link Telegram creates a private invitation. The user opens the bot, presses
+  Start, then confirms the displayed name, optional username and Telegram ID
+  in Guuey with Confirm this account. The confirmation explains that results
+  from enabled tasks will be shared there. Names and usernames use
+  bidirectional text isolation; missing usernames leave no empty row.
+- Creating a link focuses Open Telegram. Confirming focuses Choose tasks;
+  that button opens the Tasks view and focuses its navigation button.
+- Once linked, the full-width account row shows the name, optional handle
+  and Disconnect. Telegram ID and the disconnect /stop explanation move
+  into Connection details, collapsed by default and keyboard-accessible.
+  Confirmation is announced without repeating a visible success block.
+- The settings show loading, pending, expired/cancelled, linked, unavailable,
+  worker-offline and retryable error states. Status refreshes every three
+  seconds after a request completes, pausing during a settings action.
+- Linking alone does not opt tasks in. New tasks start with Telegram off;
+  enabling Send matches to Telegram requires a linked account. Its helper
+  explains how to link, and task rows show Telegram on when opted in.
+- Linked settings show queued delivery counts and a delivery issue when
+  present. Disconnect and /stop turn Telegram off for the account's tasks;
+  the UI explains that a message already being sent may still arrive.
+
+Shipped presentation:
+- The surface extends the existing dark recurring-task dialog, reusing its
+  type, neutral surfaces, accent, buttons, dividers and status treatments.
+  The compact header pairs a 15px Telegram heading with a quiet 12px state
+  label. The active view has an accent underline; the account row ends in a
+  single divider. Short instructions lead to one primary next action.
+- Instruction, next-action, connection-detail and feedback paragraphs have
+  a 62ch maximum width. Long content wraps. The dialog is at most 760px wide,
+  with at least 16px outer space per side; below 480px it has 8px per side and
+  the task form uses one column. Account rows and actions wrap normally.
+- Quiet/icon buttons, the bot link and Connection details have a 44px minimum
+  target height. Loading/notices use status announcements, errors use alerts,
+  and settings actions expose a busy state. No artwork or motion was added.
+
+Polish validation already completed:
+- TypeScript and production Vite build passed; all 44 existing frontend tests
+  passed.
+- Desktop/mobile linking and explicit account confirmation used the real
+  authenticated API and an isolated database with synthetic Telegram identity.
+  The link remained inactive before confirmation; keyboard Enter confirmed it.
+- Focus transitions and collapsed Connection details worked by keyboard.
+  Task opt-in saved and persisted when reopening the editor. Disconnect
+  cleared the link and task opt-ins; the unlinked checkbox was disabled.
+- Expired, regenerated, recovered pending and cancelled links worked. Missing
+  configuration, connection errors with retry and worker-offline states rendered.
+- At 320, 390, 760, 1024 and 1440px there was no page/dialog overflow, including
+  long bidirectional names and missing usernames. Main controls were at least
+  44px, and no browser page errors were reported.
+- The single scoped detector result was empty ([]); independent review: ship.
+- No live Telegram messages were sent during this polish validation.
+
+Source: frontend/src/components/TelegramSettings.tsx, RecurringTasks.tsx and
+recurringTasks.css. Direction and required captures are recorded in
+.impeccable/review/telegram-polish-contract.md. Functional, keyboard and
+responsive evidence: .impeccable/review/telegram-polish-checks.txt.
+Scoped detector: .impeccable/review/telegram-polish-detector.json.
+The local polish evidence does not establish delivery through a live bot.

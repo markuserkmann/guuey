@@ -28,13 +28,27 @@ export default defineConfig(({ mode, command }) => {
       },
     ],
     server: {
+      allowedHosts: true,
+      cors: true,
       proxy: {
         "/api": {
           target: env.API_PROXY_TARGET ?? "http://127.0.0.1:8000",
           changeOrigin: true,
+          ws: true,
           configure(proxy) {
-            proxy.on("proxyReq", (proxyReq) => {
-              if (autoAuth)
+            proxy.on("proxyReq", (proxyReq, req) => {
+              const useDevSession = req.headers["x-guuey-dev-session"] === "1";
+              proxyReq.removeHeader("X-Guuey-Dev-Session");
+              if (autoAuth && useDevSession && !req.headers.authorization)
+                proxyReq.setHeader("Authorization", `Bearer ${devToken}`);
+            });
+            proxy.on("proxyReqWs", (proxyReq, req) => {
+              proxyReq.setHeader("X-Forwarded-Host", req.headers.host ?? "");
+              const origin = req.headers.origin;
+              const sameOrigin =
+                origin === `http://${req.headers.host}` ||
+                origin === `https://${req.headers.host}`;
+              if (autoAuth && sameOrigin)
                 proxyReq.setHeader("Authorization", `Bearer ${devToken}`);
             });
           },

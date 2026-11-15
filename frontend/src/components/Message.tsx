@@ -1,5 +1,11 @@
 import Markdown from "react-markdown";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { MessagePrimitive } from "@assistant-ui/react";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "../chatApi";
@@ -21,9 +27,11 @@ function confirmExternalNavigation(
 export function Message({
   message,
   onRetry,
+  activity,
 }: {
   message: ChatMessage;
   onRetry?: () => void;
+  activity?: ReactNode;
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
     "idle",
@@ -78,14 +86,12 @@ export function Message({
   }
   return (
     <MessagePrimitive.Root asChild>
-      <article
-        className={`message message-${message.role}`}
-        aria-busy={message.delivery === "updating"}
-      >
-        {message.draft && (
-          <p className="delivery-status">Draft · checking sources</p>
-        )}
-        <div className="message-content">
+      <article className={`message message-${message.role}`}>
+        {activity}
+        <div
+          className="message-content"
+          aria-busy={message.delivery === "updating"}
+        >
           {message.role === "assistant" ? (
             <Markdown
               remarkPlugins={[remarkGfm]}
@@ -184,42 +190,44 @@ export function Message({
             </section>
           </div>
         )}
-        <div className="message-actions">
-          {message.delivery && (
-            <span
-              className={`delivery-status ${message.delivery}`}
-              role="status"
-            >
-              {message.delivery === "sending"
-                ? "Sending…"
-                : message.delivery === "failed"
-                  ? "Could not send"
-                  : message.delivery === "updating"
-                    ? "Writing…"
+        {message.content && (
+          <div className="message-actions">
+            {message.delivery && message.role === "user" && (
+              <span
+                className={`delivery-status ${message.delivery}`}
+                role="status"
+              >
+                {message.delivery === "sending"
+                  ? "Sending…"
+                  : message.delivery === "failed"
+                    ? "Could not send"
                     : "Sent"}
-            </span>
-          )}
-          {message.delivery === "failed" && (
-            <button type="button" className="quiet-button" onClick={onRetry}>
-              Retry
+              </span>
+            )}
+            {message.delivery === "failed" && (
+              <button type="button" className="quiet-button" onClick={onRetry}>
+                Retry
+              </button>
+            )}
+            <button
+              type="button"
+              className="icon-button copy-message"
+              aria-label={
+                copyState === "copied" ? "Message copied" : "Copy message"
+              }
+              title={copyState === "copied" ? "Copied" : "Copy message"}
+              onClick={() => void copy()}
+              onBlur={() => setCopyState("idle")}
+            >
+              <Icon name={copyState === "copied" ? "check" : "copy"} />
             </button>
-          )}
-          <button
-            type="button"
-            className="icon-button copy-message"
-            aria-label={
-              copyState === "copied" ? "Message copied" : "Copy message"
-            }
-            title={copyState === "copied" ? "Copied" : "Copy message"}
-            onClick={() => void copy()}
-            onBlur={() => setCopyState("idle")}
-          >
-            <Icon name={copyState === "copied" ? "check" : "copy"} />
-          </button>
-          {copyState === "error" && (
-            <span role="alert">Couldn't copy. Select the text to copy it.</span>
-          )}
-        </div>
+            {copyState === "error" && (
+              <span role="alert">
+                Couldn't copy. Select the text to copy it.
+              </span>
+            )}
+          </div>
+        )}
       </article>
     </MessagePrimitive.Root>
   );

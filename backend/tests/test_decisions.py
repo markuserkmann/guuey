@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from app.orchestration.decisions import DecisionUnavailable, decide
+from app.orchestration.decisions import DecisionUnavailable, DecisionUncertain, decide
 
 
 @pytest.mark.parametrize('confidence,accepted', [(0.95, True), (0.5, False)])
@@ -21,8 +21,9 @@ def test_decision_confidence_and_usage(monkeypatch, confidence, accepted):
     original = httpx.Client
     monkeypatch.setattr(httpx, 'Client', lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
     if not accepted:
-        with pytest.raises(DecisionUnavailable):
+        with pytest.raises(DecisionUncertain) as error:
             decide('Find ten laptops')
+        assert error.value.decision.confidence == confidence
     else:
         result = decide('Find ten laptops')
         assert result.workflow == 'research'
@@ -35,3 +36,17 @@ def test_missing_key_needs_fallback(monkeypatch):
     monkeypatch.delenv('GOOGLE_API_KEY', raising=False)
     with pytest.raises(DecisionUnavailable):
         decide('hello')
+
+
+def test_uncertain_depth_does_not_discard_confident_workflow(monkeypatch):
+    monkeypatch.setenv('GEMINI_API_KEY', 'fixture-key')
+    def handler(request):
+        return httpx.Response(200, json={'answers': {
+            'workflow': {'choice': 'research', 'confidence': 0.95},
+            'deep': {'noul': 0.95, 'confidence': 0.3},
+        }})
+    original = httpx.Client
+    monkeypatch.setattr(httpx, 'Client', lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+    result = decide('Find laptop prices')
+    assert result.workflow == 'research' and result.confidence == 0.95
+    assert not result.deep_recommended

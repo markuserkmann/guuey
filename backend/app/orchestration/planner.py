@@ -220,6 +220,8 @@ def plan_searches(message: str, contract: ResearchContract | None = None) -> tup
             "Use exact candidate and related entity names; target direct offers, operator price pages, hotel locations "
             "and seller delivery policies. Set gap to the unresolved requirement. Preserve all hard constraints. "
             "Replace candidates with hard failures; reserve a search for new candidates when too few qualify. "
+            "If only provider links or unsupported leads were found, investigate their exact names and official detail pages. "
+            "Split an overly specific unsuccessful query into its independent evidence needs; keep the original constraints for verification. "
             "Do not repeat attempted queries or satisfied checks. Natural language, no site: or OR chains. "
             "Use local-language queries when useful. Domain/date/category restrictions require an exact filter_quote "
             "from the user's original restriction; preferred sources are not hard filters. Return [] when no useful query remains."

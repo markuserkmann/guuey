@@ -65,6 +65,7 @@ class KnowledgeAnswer(BaseModel):
     draft: str | None = None
     caveats: list[str] = Field(default_factory=list)
     limited_evidence: bool = False
+    unresolved_requirements: list[str] = Field(default_factory=list)
 
 
 class GroundedAnswer(BaseModel):
@@ -126,6 +127,8 @@ class LLMKnowledgeAnswer(BaseModel):
     steps: list[str] = Field(default_factory=list)
     draft: str | None = None
     caveats: list[str] = Field(default_factory=list)
+    unresolved_requirements: list[str] = Field(default_factory=list,
+        description="Contract requirement IDs whose requested facts are still unverified. Advice to check a website is not an answer to a requested fact.")
 
 
 class LLMAnswer(BaseModel):
@@ -1255,7 +1258,6 @@ def render_answer(answer: GroundedAnswer, sources: list[dict], contract: Researc
         if best:
             fact = next(c for c in best.checks if c.status == "met" and matching_evidence(c.evidence, sources))
             sections.insert(0, "Best pick: " + plain(best.name) + " because " + plain(fact.statement.rstrip(".!")) + ". " + links(fact.evidence))
-        sections.append("Next step: open the provider link and confirm the outstanding details before buying or booking.")
     if not sections:
         if answer.knowledge and not answer.findings:
             text = render_knowledge(answer.knowledge, sources, contract)
@@ -1265,8 +1267,8 @@ def render_answer(answer: GroundedAnswer, sources: list[dict], contract: Researc
             sections.append(answer.response)
         elif not sections and sources:
             knowledge_task = bool(contract and contract.activity == "research" and not contract.requested_count)
-            sections.append("I could not confirm the requested facts from the available evidence. These sources may help resolve the remaining questions."
-                            if knowledge_task else "I couldn't verify matching options yet. These provider links may help confirm suitability.")
+            sections.append("I could not confirm the requested facts from the evidence retrieved. These sources remain unverified leads."
+                            if knowledge_task else "I couldn't verify matching options from the evidence retrieved. These provider links remain unverified leads.")
             viable_sources = sorted([s for s in sources if source_class(s, contract) not in {"seo", "off_target"}],
                                     key=lambda s: QUALITY_RANK[source_class(s, contract)])
             for source in viable_sources[:answer.requested_count or 5]:
@@ -1274,7 +1276,7 @@ def render_answer(answer: GroundedAnswer, sources: list[dict], contract: Researc
                 sections.append(f"- [{plain(source.get('title') or source['url'])}](<{url}>)")
             issues.append("No validated findings; showing retrieved leads instead")
         elif not sections:
-            sections.append("I couldn't retrieve usable pages for this request. Try a broader search or share a listing to check.")
+            sections.append("I couldn't retrieve usable pages for this request.")
     # Completeness is determined by checked evidence, not generated summary prose.
     limitations = []
     if issues or any(not finding_coverage(finding, sources)[1] for finding in answer.findings):

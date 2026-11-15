@@ -117,6 +117,36 @@ def test_idle_expiry_closes_browser_and_releases_chat(warm_runtime, monkeypatch)
     assert rt.runs.claim()['id'] == next_run
 
 
+def test_unchecked_followup_can_automatically_reuse_warm_browser(warm_runtime, monkeypatch):
+    rt = warm_runtime
+    browser_calls = []
+
+    async def model(*args, deps, **kwargs):
+        browser_calls.append(deps.run_id)
+        return SimpleNamespace(output=BrowserReport(outcome='done', summary='Done'))
+
+    monkeypatch.setattr(browser_run, 'build_agent', lambda _: SimpleNamespace(run=model))
+    def research(*args, **kwargs):
+        assert kwargs['search_requested']
+        return SimpleNamespace(reply='Search result', sources=[], debug={})
+    monkeypatch.setattr(worker, 'run_turn', research)
+
+    async def flow():
+        task = asyncio.create_task(worker.serve_chat(rt.first))
+        await wait_finished(rt.runs, rt.first)
+        second = rt.runs.create('owner', rt.chat, 'second', 'Check my basket', 'auto')['id']
+        async with asyncio.timeout(4):
+            await task
+        saved = rt.runs.get('owner', second)
+        assert saved['status'] == 'completed'
+        assert saved['debug']['decision']['workflow'] == 'browser'
+        assert saved['debug']['browser']['reused'] is True
+
+    asyncio.run(flow())
+    assert len(browser_calls) == 2
+    assert rt.closed == rt.pages and len(rt.pages) == 1
+
+
 def test_cancelled_followup_closes_warm_browser(warm_runtime, monkeypatch):
     rt = warm_runtime
     started = []

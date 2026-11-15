@@ -6,6 +6,8 @@ from pydantic_core import to_jsonable_python
 
 from app.store import ChatStore, now
 from app.browser.store import BrowserStore, SCHEMA, extend_schema
+from app.tasks import SCHEMA as TASK_SCHEMA, finish_task
+from app.telegram import SCHEMA as TELEGRAM_SCHEMA
 
 
 class RunStore(ChatStore):
@@ -27,13 +29,23 @@ class RunStore(ChatStore):
                 );
             ''')
             db.executescript(SCHEMA)
+            db.executescript(TASK_SCHEMA)
+            db.executescript(TELEGRAM_SCHEMA)
             db.execute('BEGIN IMMEDIATE')
+            if 'telegram_enabled' not in {row['name'] for row in db.execute('PRAGMA table_info(recurring_tasks)')}:
+                db.execute('ALTER TABLE recurring_tasks ADD COLUMN telegram_enabled INTEGER NOT NULL DEFAULT 0')
             if 'attachments' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
                 db.execute("ALTER TABLE runs ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'")
             if 'live_output' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
                 db.execute("ALTER TABLE runs ADD COLUMN live_output TEXT")
             if 'timezone' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
                 db.execute("ALTER TABLE runs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
+            columns = {row['name'] for row in db.execute('PRAGMA table_info(runs)')}
+            if 'force_browser' not in columns:
+                if 'allow_browser' in columns:
+                    db.execute('ALTER TABLE runs RENAME COLUMN allow_browser TO force_browser')
+                else:
+                    db.execute('ALTER TABLE runs ADD COLUMN force_browser INTEGER NOT NULL DEFAULT 0')
             if 'deadline_at' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
                 db.execute('ALTER TABLE runs ADD COLUMN deadline_at REAL')
             if 'browser_view' not in {row['name'] for row in db.execute('PRAGMA table_info(runs)')}:
@@ -57,13 +69,14 @@ class RunStore(ChatStore):
         data['result'] = json.loads(data['result']) if data['result'] else None
         data['debug'] = json.loads(data['debug'])
         data['attachments'] = json.loads(data['attachments'])
+        data['force_browser'] = bool(data['force_browser'])
         data['live_output'] = json.loads(data['live_output']) if data.get('live_output') else None
         data.pop('owner', None)
         data.pop('browser_view', None)
         data.pop('worker_id', None)
         return data
 
-    def create(self, owner, chat_id, request_id, message, mode, parent_id=None, attachments=None, timezone='UTC'):
+    def create(self, owner, chat_id, request_id, message, mode, parent_id=None, attachments=None, timezone='UTC', force_browser=False):
         from app.task_context import validate_timezone
         validate_timezone(timezone)
         attachments = attachments or []
@@ -71,7 +84,7 @@ class RunStore(ChatStore):
             db.execute('BEGIN IMMEDIATE')
             old = db.execute('SELECT * FROM runs WHERE owner=? AND request_id=?', (owner, request_id)).fetchone()
             if old:
-                if (old['chat_id'], old['message'], old['mode'], json.loads(old['attachments']), old['timezone']) != (chat_id, message, mode, attachments, timezone):
+                if (old['chat_id'], old['message'], old['mode'], json.loads(old['attachments']), old['timezone'], bool(old['force_browser'])) != (chat_id, message, mode, attachments, timezone, force_browser):
                     raise ValueError('Request ID already used with different content')
                 return self.decode(old)
             if not db.execute('SELECT id FROM chats WHERE id=? AND owner=?', (chat_id, owner)).fetchone():
@@ -85,6 +98,8 @@ class RunStore(ChatStore):
                 parent = db.execute('SELECT * FROM runs WHERE id=? AND owner=? AND chat_id=?', (parent_id, owner, chat_id)).fetchone()
                 if not parent or parent['status'] != 'partial' or parent['mode'] == 'deep':
                     raise ValueError('This run cannot be continued')
+                if parent['request_id'].startswith('task:'):
+                    raise ValueError('Use Check now to retry a recurring task')
                 if (parent['deadline_at'] is not None or parent['phase'].startswith('browser_')
                         or json.loads(parent['debug']).get('decision', {}).get('workflow') == 'browser'):
                     raise ValueError('Browser runs cannot be continued with Deep')
@@ -94,7 +109,7 @@ class RunStore(ChatStore):
             identifier, timestamp = str(uuid4()), now()
             db.execute('INSERT INTO runs(id,owner,chat_id,request_id,message,mode,status,phase,created_at,updated_at,parent_id,attachments) VALUES(?,?,?,?,?,?,?, ?,?,?,?,?)',
                        (identifier, owner, chat_id, request_id, message, mode, 'queued', 'queued', timestamp, timestamp, parent_id, json.dumps(attachments)))
-            db.execute('UPDATE runs SET timezone=? WHERE id=?', (timezone, identifier))
+            db.execute('UPDATE runs SET timezone=?,force_browser=? WHERE id=?', (timezone, force_browser, identifier))
         return self.get(owner, identifier)
 
     def claim(self, *, max_running=None):
@@ -168,6 +183,16 @@ class RunStore(ChatStore):
             db.execute("UPDATE runs SET live_output=?, updated_at=? WHERE id=? AND status='running'",
                        (json.dumps(output, ensure_ascii=False), now(), run_id))
 
+    def update_initial_output(self, run_id, output):
+        with self.connect() as db:
+            changed = db.execute("""UPDATE runs SET live_output=?, updated_at=?
+                WHERE id=? AND status='running' AND result IS NULL
+                AND phase NOT LIKE 'awaiting_%' AND phase != 'error'
+                AND (live_output IS NULL OR live_output='null'
+                     OR json_extract(live_output, '$.stage')='initial_response')""",
+                (json.dumps(output, ensure_ascii=False), now(), run_id))
+        return changed.rowcount > 0
+
     def stream_state(self, owner, run_id):
         with self.connect() as db:
             row = db.execute("SELECT id,status,phase,updated_at,live_output,result FROM runs WHERE owner=? AND id=?",
@@ -216,7 +241,8 @@ class RunStore(ChatStore):
                 db.execute('DELETE FROM browser_warm_reservations WHERE expires_at<=?', (time.time(),))
                 db.execute('INSERT OR IGNORE INTO browser_warm_reservations VALUES (?, ?, ?, ?)',
                            (row['owner'], row['chat_id'], warm_token, time.time() + warm_seconds))
-            if result:
+            scheduled = finish_task(db, row, status, phase, result)
+            if result and not scheduled:
                 timestamp = now()
                 if not row['parent_id']:
                     db.execute('INSERT INTO messages(id,chat_id,role,content,sources,created_at,attachments) VALUES(?,?,?,?,?,?,?)', (f"user:{row['request_id']}", row['chat_id'], 'user', row['message'], '[]', timestamp, row['attachments']))
@@ -229,5 +255,6 @@ class RunStore(ChatStore):
 
     def latest(self, owner, chat_id):
         with self.connect() as db:
-            row = db.execute('SELECT * FROM runs WHERE owner=? AND chat_id=? ORDER BY created_at DESC LIMIT 1', (owner, chat_id)).fetchone()
+            row = db.execute('''SELECT * FROM runs WHERE owner=? AND chat_id=?
+                AND request_id NOT LIKE 'task:%' ORDER BY created_at DESC LIMIT 1''', (owner, chat_id)).fetchone()
         return {**self.decode(row), 'browser': self.browser_state(owner, row['id'])} if row else None

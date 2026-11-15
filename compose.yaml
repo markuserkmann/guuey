@@ -3,9 +3,15 @@ services:
     build: ./backend
     environment:
       AGENT_API_TOKEN: ${AGENT_API_TOKEN:-}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_TRANSCRIPTION_MODEL: ${GEMINI_TRANSCRIPTION_MODEL:-gemini-3.5-transcribe-live}
+      GEMINI_TRANSCRIPTION_LANGUAGE: ${GEMINI_TRANSCRIPTION_LANGUAGE:-en-US}
       GEMINI_PLANNING_MODEL: ${GEMINI_PLANNING_MODEL:-}
       GEMINI_FAST_PLANNING_MODEL: ${GEMINI_FAST_PLANNING_MODEL:-gemini-3.5-flash-lite}
       GEMINI_RESEARCH_MODEL: ${GEMINI_RESEARCH_MODEL:-}
@@ -14,6 +20,7 @@ services:
       CHAT_DATABASE_PATH: /data/chats.sqlite3
       BROWSER_ENABLED: ${BROWSER_ENABLED:-false}
       BROWSER_BACKEND: ${BROWSER_BACKEND:-oxylabs}
+      BROWSER_DRIVER: ${BROWSER_DRIVER:-playwright}
       OXY_AB_USERNAME: ${OXY_AB_USERNAME:-}
       OXY_AB_PASSWORD: ${OXY_AB_PASSWORD:-}
       OXYLAB_KEY: ${OXYLAB_KEY:-}
@@ -54,10 +61,13 @@ services:
       GEMINI_RESEARCH_MODEL: ${GEMINI_RESEARCH_MODEL:-}
       GEMINI_VERIFICATION_MODEL: ${GEMINI_VERIFICATION_MODEL:-}
       GEMINI_DECISION_MODEL: ${GEMINI_DECISION_MODEL:-gemini-decision-1}
+      INITIAL_RESPONSE_ENABLED: ${INITIAL_RESPONSE_ENABLED:-true}
+      GEMINI_INITIAL_RESPONSE_MODEL: ${GEMINI_INITIAL_RESPONSE_MODEL:-gemini-3.5-flash-lite}
       EXA_API_KEY: ${EXA_API_KEY:-}
       CHAT_DATABASE_PATH: /data/chats.sqlite3
       BROWSER_ENABLED: ${BROWSER_ENABLED:-false}
       BROWSER_BACKEND: ${BROWSER_BACKEND:-oxylabs}
+      BROWSER_DRIVER: ${BROWSER_DRIVER:-playwright}
       OXY_AB_USERNAME: ${OXY_AB_USERNAME:-}
       OXY_AB_PASSWORD: ${OXY_AB_PASSWORD:-}
       OXYLAB_KEY: ${OXYLAB_KEY:-}
@@ -75,6 +85,19 @@ services:
       BROWSER_MODEL_MAX_TOKENS: ${BROWSER_MODEL_MAX_TOKENS:-8192}
       BROWSER_MODEL_TIMEOUT_S: ${BROWSER_MODEL_TIMEOUT_S:-180}
       BROWSER_FINAL_ACTION_PATTERNS: ${BROWSER_FINAL_ACTION_PATTERNS:-}
+    volumes:
+      - chats-data:/data
+    restart: unless-stopped
+  telegram:
+    profiles: ["telegram"]
+    build: ./backend
+    command: ["/app/.venv/bin/python", "-m", "app.telegram_worker"]
+    init: true
+    environment:
+      CHAT_DATABASE_PATH: /data/chats.sqlite3
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
     volumes:
       - chats-data:/data
     restart: unless-stopped

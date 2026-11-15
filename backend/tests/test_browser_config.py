@@ -9,13 +9,14 @@ from app.secrets import SECRET_ENV_NAMES, redact
 
 
 def test_browser_defaults_and_secrets_not_in_repr(monkeypatch):
-    for name in ('BROWSER_ENABLED', 'BROWSER_BACKEND', 'BROWSER_MODEL', 'BROWSER_DEADLINE_S', 'BROWSER_IDLE_TIMEOUT_S'):
+    for name in ('BROWSER_ENABLED', 'BROWSER_BACKEND', 'BROWSER_DRIVER', 'BROWSER_MODEL', 'BROWSER_DEADLINE_S', 'BROWSER_IDLE_TIMEOUT_S'):
         monkeypatch.setenv(name, '')
     monkeypatch.setenv('OXY_AB_PASSWORD', 'private-password')
     monkeypatch.setenv('BROWSER_SESSION_KEY', 'ab' * 32)
     settings = BrowserSettings.from_env()
     assert settings.enabled is False
     assert settings.backend == 'oxylabs'
+    assert settings.driver == 'playwright'
     assert settings.deadline_s == 1800
     assert settings.idle_timeout_s == 60
     assert settings.saved_logins_enabled
@@ -34,7 +35,7 @@ def test_browser_reasoning_limits_can_be_overridden(monkeypatch):
     assert (settings.max_steps, settings.deadline_s) == (180, 2400)
 
 
-@pytest.mark.parametrize('name,value', [('BROWSER_ENABLED', 'perhaps'), ('BROWSER_BACKEND', 'unknown'),
+@pytest.mark.parametrize('name,value', [('BROWSER_ENABLED', 'perhaps'), ('BROWSER_BACKEND', 'unknown'), ('BROWSER_DRIVER', 'unknown'),
     ('BROWSER_COUNTRY', 'FIN'), ('BROWSER_MAX_STEPS', '0'), ('BROWSER_DEADLINE_S', '3600'),
     ('BROWSER_REQUEST_TIMEOUT_S', 'nan'), ('BROWSER_FINAL_ACTION_PATTERNS', '['),
     ('BROWSER_THINKING_LEVEL', 'unknown'), ('BROWSER_TOOL_RETRIES', '0'),
@@ -44,6 +45,15 @@ def test_invalid_settings_fail_without_echoing_values(monkeypatch, name, value):
     monkeypatch.setenv(name, value)
     with pytest.raises(ValueError, match=name):
         BrowserSettings.from_env()
+
+
+@pytest.mark.parametrize('backend', ['oxylabs', 'local'])
+def test_patchright_driver_is_independent_of_backend(monkeypatch, backend):
+    monkeypatch.setenv('BROWSER_BACKEND', backend)
+    monkeypatch.setenv('BROWSER_DRIVER', ' PATCHRIGHT ')
+    settings = BrowserSettings.from_env()
+    assert settings.backend == backend
+    assert settings.driver == 'patchright'
 
 
 def test_connection_errors_redacted(monkeypatch):

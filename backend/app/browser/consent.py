@@ -1,6 +1,6 @@
 from contextlib import suppress
 
-from playwright.async_api import Error
+from app.browser.driver import BROWSER_ERRORS
 
 
 CONSENT_CONTROL = r'''skipped => {
@@ -57,11 +57,11 @@ async def dismiss_cookie_dialog(page, active, check_scope, attempts):
                 !element.getClientRects().length || getComputedStyle(element).visibility === 'hidden' ''',
                 arg=container, timeout=1500)
             return True
-        except (Error, ValueError):
+        except (*BROWSER_ERRORS, ValueError):
             continue
         finally:
             for item in (container, button_handle, handle):
                 if item is not None:
-                    with suppress(Error):
+                    with suppress(*BROWSER_ERRORS):
                         await item.dispose()
     return False

@@ -1,0 +1,76 @@
+Recurring-task sidebar validation (2026-11-15)
+
+Scope
+Recurring tasks have their own left-sidebar section between Pinned and Recents.
+The heading opens task management; each task row opens its chat. Task chats are
+excluded from ordinary groups even when pinned. Queued/running checks show a
+rotating repeat arrow, including while a different chat is selected. Paused and
+failed states have explicit labels. Failed refreshes expose Retry tasks and mark
+the last status unavailable. Search includes tasks outside the returned chat list.
+The client restores scheduled runs through task history because the ordinary
+chat latest-run endpoint intentionally excludes them. A newer manual conversation
+run takes precedence, and a new scheduled run updates an already-open task chat.
+
+Direction
+Scoped extension of Guuey's existing compact dark sidebar, system font, neutral
+palette and native controls. ENERGY 1 / RHYTHM 1 / MOTION 1. Motion indicates actual
+queued/running work; reduced motion keeps the repeat arrow still. The chevron
+identifies the task-management destination. No new visual world or image assets.
+This local extension establishes no new global design-system rules.
+
+Implementation references
+frontend/src/components/ChatSidebar.tsx: grouping, status and navigation.
+frontend/src/components/TaskActivity.tsx: accessible repeat-arrow status.
+frontend/src/App.tsx and frontend/src/taskApi.ts: polling and run restoration.
+frontend/src/styles.css: task-row layout and reduced-motion behavior.
+
+Checks
+PASS: TypeScript compilation and Vite production build.
+PASS: Seven focused tests in task-api.test.mjs and task-sidebar.test.mjs cover
+grouping, background activity, paused work, search, loading/error/unread states,
+and precedence between scheduled and manual runs.
+PASS: Prettier across every file changed for this feature; git diff --check.
+PASS: Isolated real API + Vite browser walkthrough, with a temporary database
+and synthetic task state. No live research or external notifications were sent.
+PASS: Keyboard opens management; Check now queues a run; Escape restores focus.
+PASS: Background check activity stays visible in another chat. Opening a running
+task shows progress; completion clears it. Starting the next check while its chat
+is open displays progress without a reload or navigation.
+PASS: Search keeps tasks separate; failed task refresh exposes Retry tasks and
+removes stale activity; recovery restores the live state.
+PASS: 320, 390, 760, 1024 and 1440px have no horizontal overflow. New task controls
+meet 44px minimum targets. Reduced-motion emulation disables the arrow animation.
+PASS: No uncaught JavaScript errors during the walkthrough.
+PASS: Desktop and mobile captures viewed after the drawer transition settled:
+  .impeccable/review/sidebar-desktop.png
+  .impeccable/review/sidebar-mobile.png
+Detailed interaction evidence: .impeccable/review/sidebar-checks.txt.
+
+Review disposition
+SHIP: The finish reviewer found no material issues after reviewing the desktop
+and mobile captures listed above. This disposition applies to the sidebar scope;
+the broader test and formatting exceptions remain recorded under Limits.
+
+Delivery gate for the changed UI
+PASS Hard gate: working navigation and controls, loading/empty/error recovery,
+keyboard focus and Escape, responsive layout, real API state and no invented CVE
+findings. Quiet text contrast is 7.22:1 on the sidebar and 5.79:1 on active rows;
+muted text is 9.21:1 and 7.38:1. New copy has no em dashes.
+PASS Purpose gate: inherited type, color and spacing retain the existing hierarchy;
+the section separates scheduled work, the arrow indicates activity, and the unread
+count reflects saved notifications. No decorative assets or motion were added.
+PASS Liveliness: explicit 1/1/1 dials fit the existing calm navigation; selected rows
+and the running arrow direct attention, and compact repeated typography preserves
+the product's identity.
+PASS Craftsmanship: complete navigation and recovery paths, bounded non-overlapping
+polling with abort/cleanup, accessible names, touch targets and reduced motion.
+
+Limits
+The full frontend suite passed 30/32 tests on the final broad run. Two unrelated
+microphone tests at 44.1 and 48kHz failed after concurrent microphone changes
+required a 16kHz context. The full formatting command also reports an unrelated
+Composer.tsx formatting issue. Those files were not changed for this task.
+The design detector ran once and reported only the existing .browser-notice
+left-border style outside this change. No screen-reader or physical-device test
+is claimed. These fixtures verify UI behavior, not the accuracy of CVE research.
+Telegram is a documented proposal in README.md, not an activated integration.

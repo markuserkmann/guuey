@@ -1,0 +1,37 @@
+Multi-user sign-in validation (2026-11-15)
+
+Direction: existing Guuey dark surfaces, system typography and compact controls.
+ENERGY 1 / RHYTHM 1 / MOTION 1. No new visual assets or theme introduced.
+The light Sign in button remains the primary action. Underlined method selectors
+distinguish the current form. Spacing groups credentials and separates alternate
+sign-in methods. The sidebar account label makes the active owner visible.
+
+PASS: 890 existing backend tests.
+PASS: 20 existing frontend tests, TypeScript/Vite build and Prettier check.
+PASS: isolated API verification of user ownership for chats, search, pins, runs,
+debug, SSE, cancellation and browser logins; cross-user requests return 404.
+PASS: seed replay creates no duplicates, preserves message order and indexes text.
+PASS: cookie mutations require the app header; stale account IDs are rejected.
+PASS: password sign-in, reusable magic links, server/store restart, link rotation,
+logout, disabled accounts, login rate limiting and credential-error redaction.
+
+Chromium interaction evidence against a temporary database and the Vite proxy:
+- Password selector -> labeled username and masked password fields.
+- Incorrect password -> generic error, successful resubmission remains possible.
+- Enter in password field -> signs in and opens the user's seeded conversation.
+- Reload -> restores the same signed-in account and chat history.
+- Sign out -> clears the workspace and returns to sign-in; reload stays signed out.
+- Magic link in an already-open tab -> signs in and removes the URL fragment.
+- Pasted magic link -> signs in again using the same link after logout.
+- A second tab signs into another account -> the first tab clears its conversation.
+- API token selector -> masked token field; invalid token -> authentication error.
+- Use development connection -> opens only the original shared workspace.
+- Independent accounts display their own seeded conversations.
+- No uncaught JavaScript errors in the exercised flows.
+
+Login widths 320, 390, 760, 1024 and 1440: no horizontal overflow.
+Screenshots inspected at 390 (sign-in) and 1440 (signed-in workspace).
+New inputs and method/submit controls have visible labels, keyboard access and
+minimum 44px height; the existing focus styles and reduced-motion rules apply.
+New copy describes implemented behavior; no fabricated claims or decorative assets.
+Production deployment, real credentials and external browser tasks were not used.

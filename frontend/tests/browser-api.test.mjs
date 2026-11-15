@@ -13,6 +13,18 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+test("new runs use automatic routing by default and send explicit browser overrides", async () => {
+  const bodies = [];
+  globalThis.fetch = async (_, options) => {
+    bodies.push(JSON.parse(options.body));
+    return Response.json({ id: "run" });
+  };
+  await api.startRun(token, "chat", "Find prices", "auto", "first");
+  await api.startRun(token, "chat", "Check slots", "auto", "second", [], true);
+  assert.equal(bodies[0].force_browser, false);
+  assert.equal(bodies[1].force_browser, true);
+});
+
 test("browser responses carry auth and private values only in the request body", async () => {
   let captured;
   globalThis.fetch = async (path, options) => {

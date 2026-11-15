@@ -3,9 +3,9 @@ from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
-from playwright.async_api import TimeoutError
 
 from app.browser.actions import BrowserStop, interaction_error
+from app.browser.driver import BROWSER_TIMEOUTS
 from app.browser.observe import Observation, foreground_text, observe
 from app.browser.progress import BrowserProgress
 from test_browser_actions import deps as deps, pending_request
@@ -18,8 +18,9 @@ from test_browser_actions import deps as deps, pending_request
     ('element is detached', 'stale_ref'),
     ('strict mode violation', 'ambiguous'),
 ])
-def test_specific_interaction_failures(message, expected):
-    assert interaction_error(TimeoutError(message))[0] == expected
+@pytest.mark.parametrize('timeout_type', BROWSER_TIMEOUTS, ids=['playwright', 'patchright'])
+def test_specific_interaction_failures(message, expected, timeout_type):
+    assert interaction_error(timeout_type(message))[0] == expected
 
 
 def test_address_dialog_and_portalled_suggestions_survive_large_catalog(deps):
@@ -98,9 +99,10 @@ def test_inspection_preserves_failed_action_history(deps):
     assert list(deps.progress.outcomes) == [True]
 
 
-def test_overlay_diagnostics_preserve_reason_and_scrub_secrets(deps):
+@pytest.mark.parametrize('timeout_type', BROWSER_TIMEOUTS, ids=['playwright', 'patchright'])
+def test_overlay_diagnostics_preserve_reason_and_scrub_secrets(deps, timeout_type):
     deps.secret_values.append('private-session')
-    deps.page.controls['e3'].click_error = TimeoutError(
+    deps.page.controls['e3'].click_error = timeout_type(
         'element is visible\n<div private-session> intercepts pointer events')
     output = asyncio.run(deps.perform('click', ref='e3'))
     assert 'blocked_by_overlay' in output

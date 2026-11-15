@@ -301,9 +301,10 @@ def search(query: str, *, objective: str = "Find evidence relevant to this reque
 
 
 def extract_pages(urls: list[str], *, limit: int = 3, fresh: bool = False, focus: str = "",
-                  subpage_targets: list[str] | None = None) -> list[dict[str, str]]:
+                  subpage_targets: list[str] | None = None, bypass_cache: bool = False) -> list[dict[str, str]]:
     from app.source_cache import PersistentCache, cache_policy_sources, cached_sources, page_ttl
 
+    fresh = fresh or bypass_cache
     body = {"urls": list(dict.fromkeys(urls[:limit])), "text": {"verbosity": "full", "linkStyle": "full"}}
     if subpage_targets:
         if not isinstance(subpage_targets, list) or len(subpage_targets) > 100 or any(
@@ -320,7 +321,7 @@ def extract_pages(urls: list[str], *, limit: int = 3, fresh: bool = False, focus
         return json.dumps([str(HttpUrl(url)), sorted(body.get("subpageTarget", []))])
     hits, missing = [], []
     for url in body["urls"]:
-        saved = cache.get(cache_key(url))
+        saved = None if bypass_cache else cache.get(cache_key(url))
         if isinstance(saved, list) and saved:
             hits.extend(cached_sources(saved))
         else:

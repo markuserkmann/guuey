@@ -27,7 +27,8 @@ def client(tmp_path, monkeypatch):
     main.get_runs.cache_clear()
 
 
-def test_attached_file_reaches_worker_and_survives_reload_and_continuation(client, monkeypatch):
+@pytest.mark.parametrize('force_browser', [None, False, True])
+def test_attached_file_reaches_worker_and_survives_reload_and_continuation(client, monkeypatch, force_browser):
     seen = []
     monkeypatch.setattr(worker, "decide", lambda *args: RouteDecision(workflow="chat", confidence=1))
 
@@ -37,13 +38,18 @@ def test_attached_file_reaches_worker_and_survives_reload_and_continuation(clien
 
     monkeypatch.setattr(worker, "run_turn", generate)
     chat_id = client.post("/api/chats").json()["id"]
-    body = {"message": "Read the requirements", "request_id": str(uuid4()), "attachments": FILES}
+    body = {"message": "Read the requirements without a browser", "request_id": str(uuid4()), "attachments": FILES}
+    if force_browser is not None:
+        body['force_browser'] = force_browser
     run = client.post(f"/api/chats/{chat_id}/runs", json=body)
     assert run.status_code == 202
+    assert run.json()['force_browser'] is bool(force_browser)
     run_id = run.json()["id"]
+    assert client.get(f'/api/runs/{run_id}').json()['force_browser'] is bool(force_browser)
     assert client.post(f"/api/chats/{chat_id}/runs", json=body).json()["id"] == run_id
     changed = {**body, "attachments": [{**FILES[0], "content": "Changed"}]}
     assert client.post(f"/api/chats/{chat_id}/runs", json=changed).status_code == 409
+    assert client.post(f"/api/chats/{chat_id}/runs", json={**body, 'force_browser': not bool(force_browser)}).status_code == 409
     RunStore().claim()
     worker.execute(run_id)
     assert FILES[0]["content"] in seen[0]
@@ -55,6 +61,7 @@ def test_attached_file_reaches_worker_and_survives_reload_and_continuation(clien
     assert child.status_code == 202
     assert child.json()["attachments"] == FILES
     assert child.json()["parent_id"] == run_id
+    assert child.json()['force_browser'] is bool(force_browser)
 
 
 @pytest.mark.parametrize("files", [

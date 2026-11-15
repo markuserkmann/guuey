@@ -1,0 +1,39 @@
+Mobile composer validation (2026-11-15)
+
+Scope: fit the chat message input and its controls on phone screens.
+Direction: preserve the existing dark chat, system typography and neutral palette.
+ENERGY 1 / RHYTHM 1 / MOTION 1. No new animation. A compact input and one toolbar
+row leave more space for the conversation; a sliders icon opens secondary settings.
+Desktop keeps the visible browser checkbox. Mobile settings retain the same value.
+
+PASS R-03: Browser checks at 320, 360, 390, 430 and 760px confirmed no horizontal
+overflow and a composer no taller than 110px when empty. 1024/1440 desktop checked.
+PASS R-25: Existing #b5b5b5 on #232323 supports secondary copy (above 4.5:1).
+PASS R-26: Attach/remove files, native mode select, browser checkbox and send remain
+wired. The browser check sent a message and verified the selected browser override.
+PASS R-27: Empty, busy, multiline and attached-file states fit. File-reading status
+does not compete for toolbar width; the empty voice-status region takes no space.
+PASS R-32: Settings open with Enter; Tab reaches the checkbox and dismisses the
+panel when leaving it. Escape closes and restores focus. Outside click closes it.
+PASS R-35: Production build, 44 existing frontend tests, changed-file formatting
+and git diff --check pass. Browser fixture reported no page errors.
+PASS R-39: Attach, options and send targets are at least 44x44px. Native controls
+retain accessible names and disabled states; existing focus treatment is preserved.
+PASS R-40: No media or third-party requests added. ResizeObserver resizes only on
+width changes; multiline input has a viewport-relative height cap on mobile.
+PASS R-02/R-17/R-18/R-23/R-24/R-28/R-33/R-34/R-36/R-37/R-38: Direct scoped source
+edits preserve the established interface. No assets, navigation, factual claims,
+FAQ, theme or invented data added to the product.
+PASS purpose/liveliness: Input padding and radius follow the existing controls;
+settings use progressive disclosure; selected settings receive a visible state.
+PASS craftsmanship: Screenshots inspected at 320/390px, with settings open and a
+long draft in a 400px-high viewport. Input text stays 16px and scrolls when capped.
+
+Mechanical detector reports only the existing .browser-notice left border,
+outside this change. No new findings.
+
+Browser checks: /tmp/guuey-progress-check.mjs (mocked APIs).
+Screenshots: /tmp/guuey-composer-320.png, /tmp/guuey-composer-390.png,
+/tmp/guuey-composer-options.png, /tmp/guuey-composer-keyboard.png.
+Limitations: keyboard-constrained height was simulated by viewport resizing.
+No physical iPhone/Android keyboard or live voice transcription was tested.

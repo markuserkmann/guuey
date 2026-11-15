@@ -6,9 +6,8 @@ import time
 from dataclasses import dataclass, field, replace
 from urllib.parse import quote
 
-from playwright.async_api import Error
-
 from app.secrets import redact
+from app.browser.driver import BROWSER_ERRORS
 from app.browser.refs import ELEMENT_REF
 from app.browser.snapshot import compact_snapshot, matching_lines
 
@@ -52,7 +51,7 @@ async def foreground_regions(page, text):
             ''', timeout=1000)
             if active:
                 refs.append(ref)
-        except Error:
+        except BROWSER_ERRORS:
             continue
     return refs
 
