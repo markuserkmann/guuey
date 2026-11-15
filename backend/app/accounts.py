@@ -5,7 +5,6 @@ import json
 import os
 import re
 import secrets
-import sqlite3
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -17,6 +16,7 @@ from pwdlib import PasswordHash
 
 from app.schemas import ChatSource, ChatTurn
 from app.store import ChatStore, now
+from app.database import INTEGRITY_ERRORS, database_target
 
 SESSION_SECONDS = 30 * 24 * 60 * 60
 password_hasher = PasswordHash.recommended()
@@ -82,13 +82,13 @@ class AccountStore(ChatStore):
                 CREATE TABLE IF NOT EXISTS auth_sessions (
                     token_hash TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    expires_at REAL NOT NULL
+                    expires_at DOUBLE PRECISION NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS auth_sessions_user ON auth_sessions(user_id);
                 CREATE TABLE IF NOT EXISTS login_attempts (
                     bucket TEXT PRIMARY KEY,
                     attempts INTEGER NOT NULL,
-                    expires_at REAL NOT NULL
+                    expires_at DOUBLE PRECISION NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS seeded_chats (
                     user_id TEXT NOT NULL REFERENCES users(id),
@@ -118,7 +118,7 @@ class AccountStore(ChatStore):
             try:
                 db.execute("INSERT INTO users(id,username,password_hash,magic_hash,created_at) VALUES(?,?,?,?,?)",
                            (user["id"], username, password_hash, digest(token) if token else None, now()))
-            except sqlite3.IntegrityError:
+            except INTEGRITY_ERRORS:
                 raise ValueError("Username already exists") from None
         return user, token
 
@@ -128,7 +128,7 @@ class AccountStore(ChatStore):
         password_hash = hash_password(password) if password is not None else None
         token = secrets.token_urlsafe(32) if magic else None
         with self.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             user = db.execute("SELECT id,password_hash,magic_hash FROM users WHERE username=?", (username,)).fetchone()
             if not user:
                 raise ValueError("User not found")
@@ -144,13 +144,13 @@ class AccountStore(ChatStore):
         return token
 
     def limit_login(self, client: str, username: str | None = None) -> None:
-        # SQLite makes the limits shared across API processes and restarts.
+        # Keep login limits shared across API processes and restarts.
         buckets = [("ip:" + digest(client), 30)]
         if username is not None:
             buckets.append(("user:" + digest(username.strip().lower()), 10))
         timestamp = time.time()
         with self.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             db.execute("DELETE FROM login_attempts WHERE expires_at<=?", (timestamp,))
             for bucket, limit in buckets:
                 row = db.execute("SELECT attempts FROM login_attempts WHERE bucket=?", (bucket,)).fetchone()
@@ -158,7 +158,7 @@ class AccountStore(ChatStore):
                     raise LoginRateLimited
             for bucket, _ in buckets:
                 db.execute("""INSERT INTO login_attempts VALUES(?,1,?)
-                    ON CONFLICT(bucket) DO UPDATE SET attempts=attempts+1""", (bucket, timestamp + 300))
+                    ON CONFLICT(bucket) DO UPDATE SET attempts=login_attempts.attempts+1""", (bucket, timestamp + 300))
 
     def login(self, *, username: str | None = None, password: str = "", magic_token: str | None = None,
               previous_session: str | None = None) -> tuple[dict, str] | None:
@@ -175,7 +175,7 @@ class AccountStore(ChatStore):
             if not row:
                 return None
             token = secrets.token_urlsafe(32)
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             # A credential reset or disable during password verification must win.
             current = db.execute("SELECT * FROM users WHERE id=? AND disabled=0", (row["id"],)).fetchone()
             if not current or (current["password_hash"], current["magic_hash"]) != (row["password_hash"], row["magic_hash"]):
@@ -205,7 +205,7 @@ class AccountStore(ChatStore):
             raise ValueError("Seed chat keys must be unique")
         count = 0
         with self.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             user = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
             if not user:
                 raise ValueError("User not found")
@@ -233,7 +233,7 @@ def _account_store(filename: str) -> AccountStore:
 
 
 def get_accounts() -> AccountStore:
-    return _account_store(os.getenv("CHAT_DATABASE_PATH", "runtime/chats.sqlite3"))
+    return _account_store(database_target())
 
 
 def magic_link(base_url: str, token: str) -> str:

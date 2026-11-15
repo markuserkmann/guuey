@@ -18,24 +18,24 @@ from app.store import now
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS telegram_links (
     owner TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, bot_id TEXT NOT NULL,
-    chat_id INTEGER NOT NULL UNIQUE, username TEXT, first_name TEXT NOT NULL,
+    chat_id BIGINT NOT NULL UNIQUE, username TEXT, first_name TEXT NOT NULL,
     linked_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS telegram_pending_links (
     owner TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, bot_id TEXT NOT NULL,
-    token_hash TEXT NOT NULL UNIQUE, expires_at REAL NOT NULL,
-    chat_id INTEGER, username TEXT, first_name TEXT
+    token_hash TEXT NOT NULL UNIQUE, expires_at DOUBLE PRECISION NOT NULL,
+    chat_id BIGINT, username TEXT, first_name TEXT
 );
 CREATE TABLE IF NOT EXISTS telegram_deliveries (
     notification_id TEXT PRIMARY KEY REFERENCES task_notifications(id) ON DELETE CASCADE,
     link_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
-    attempts INTEGER NOT NULL DEFAULT 0, due_at REAL NOT NULL,
-    claimed_at REAL, sent_at TEXT, message_id INTEGER, error TEXT
+    attempts INTEGER NOT NULL DEFAULT 0, due_at DOUBLE PRECISION NOT NULL,
+    claimed_at DOUBLE PRECISION, sent_at TEXT, message_id BIGINT, error TEXT
 );
 CREATE INDEX IF NOT EXISTS telegram_deliveries_due ON telegram_deliveries(status, due_at);
 CREATE TABLE IF NOT EXISTS telegram_worker_state (
-    bot_id TEXT PRIMARY KEY, next_update_id INTEGER NOT NULL DEFAULT 0,
-    lease_owner TEXT, lease_until REAL NOT NULL DEFAULT 0, seen_at REAL NOT NULL DEFAULT 0
+    bot_id TEXT PRIMARY KEY, next_update_id BIGINT NOT NULL DEFAULT 0,
+    lease_owner TEXT, lease_until DOUBLE PRECISION NOT NULL DEFAULT 0, seen_at DOUBLE PRECISION NOT NULL DEFAULT 0
 );
 """
 
@@ -102,7 +102,7 @@ class TelegramStore:
     def __init__(self, runs, settings=None):
         self.runs = runs
         self.settings = settings or TelegramSettings.from_env()
-        AccountStore(str(runs.path))
+        AccountStore(runs.database)
 
     def status(self, owner):
         with self.runs.connect() as db:
@@ -136,7 +136,7 @@ class TelegramStore:
             raise ValueError("Telegram is not configured on this server.")
         nonce, attempt_id = secrets.token_urlsafe(32), str(uuid4())
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             db.execute("DELETE FROM telegram_pending_links WHERE expires_at<=?", (time.time(),))
             if db.execute("SELECT 1 FROM telegram_links WHERE owner=? AND bot_id=?", (owner, self.settings.bot_id)).fetchone():
                 raise ValueError("Disconnect your current Telegram account before linking another.")
@@ -150,7 +150,7 @@ class TelegramStore:
         if not re.fullmatch(r"[A-Za-z0-9_-]{43}", nonce):
             return False
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             row = db.execute("""SELECT * FROM telegram_pending_links
                 WHERE token_hash=? AND bot_id=? AND expires_at>? AND chat_id IS NULL""",
                              (token_hash(nonce), self.settings.bot_id, time.time())).fetchone()
@@ -164,7 +164,7 @@ class TelegramStore:
 
     def confirm(self, owner, attempt_id):
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             pending = db.execute("""SELECT * FROM telegram_pending_links WHERE owner=? AND id=?
                 AND bot_id=? AND expires_at>? AND chat_id IS NOT NULL""",
                                  (owner, attempt_id, self.settings.bot_id, time.time())).fetchone()
@@ -180,12 +180,12 @@ class TelegramStore:
 
     def disconnect(self, owner):
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             unlink(db, owner)
 
     def stop_chat(self, chat_id):
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             rows = db.execute("SELECT owner FROM telegram_links WHERE chat_id=? AND bot_id=?",
                               (chat_id, self.settings.bot_id)).fetchall()
             for row in rows:
@@ -194,8 +194,8 @@ class TelegramStore:
 
     def lease(self, worker_id):
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            db.execute("INSERT OR IGNORE INTO telegram_worker_state(bot_id) VALUES(?)", (self.settings.bot_id,))
+            db.begin_write()
+            db.execute("INSERT INTO telegram_worker_state(bot_id) VALUES(?) ON CONFLICT DO NOTHING", (self.settings.bot_id,))
             return bool(db.execute("""UPDATE telegram_worker_state SET lease_owner=?,lease_until=?,seen_at=?
                 WHERE bot_id=? AND (lease_owner=? OR lease_until<?)""",
                                    (worker_id, time.time() + 90, time.time(), self.settings.bot_id, worker_id, time.time())).rowcount)
@@ -214,7 +214,7 @@ class TelegramStore:
 
     def claim_delivery(self):
         with self.runs.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_write()
             # A crashed send may have reached Telegram. Do not send that alert twice.
             db.execute("""UPDATE telegram_deliveries SET status='unknown',error='Delivery could not be confirmed. Read the update in Guuey.'
                 WHERE status='sending' AND claimed_at<?""", (time.time() - 120,))

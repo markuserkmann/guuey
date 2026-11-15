@@ -364,7 +364,7 @@ async def serve_chat(run_id):
         await session.close()
 
 
-def supervise():
+def supervise(heartbeat=None):
     store = RunStore()
     tasks = TaskStore(store)
     with store.connect() as db:
@@ -378,6 +378,8 @@ def supervise():
     try:
         while True:
             if time.monotonic() >= next_schedule_check:
+                if heartbeat is not None:
+                    heartbeat()
                 tasks.enqueue_due()
                 next_schedule_check = time.monotonic() + 5
             for token, (process, started, budget, owner, previous_id) in list(active.items()):
@@ -420,4 +422,9 @@ def supervise():
 
 
 if __name__ == '__main__':
-    asyncio.run(serve_chat(sys.argv[1])) if len(sys.argv) > 1 else supervise()
+    if len(sys.argv) > 1:
+        asyncio.run(serve_chat(sys.argv[1]))
+    else:
+        from app.database import coordinator_lock, database_target
+        with coordinator_lock(database_target()) as heartbeat:
+            supervise(heartbeat)

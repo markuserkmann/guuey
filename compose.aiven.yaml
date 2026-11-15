@@ -1,0 +1,16 @@
+services:
+  guuey:
+    build:
+      context: .
+      dockerfile: Dockerfile.aiven
+    ports:
+      - "8000:8000"
+    depends_on:
+      - guuey-db
+    environment:
+      # Runtime replaces this scanner hint with the managed database connection URI.
+      DATABASE_URL: postgresql://guuey:configure-in-aiven@guuey-db:5432/guuey
+      DATABASE_SSLMODE: verify-full
+      AUTH_COOKIE_SECURE: "true"
+  guuey-db:
+    image: postgres:18
